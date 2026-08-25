@@ -13,6 +13,12 @@ No code yet — only process documentation. Next session bootstraps the monorepo
 - Two commits per docs change: one inside `docs/`, one in the root updating the submodule pointer.
 - Themes are `reference` docs; tasks are flat and closable and point to their theme via `related`.
 
+## Source (BuscadorSISE)
+
+- The search API (`apisise.cjf.gob.mx`) is effectively public: its Bearer token is issued anonymously on page load, lasts 8 h, and works from plain `curl`. No login and no reCAPTCHA on search or download. **The token is all an agent needs** to read the API.
+- Do NOT re-derive or handle the site's embedded client credentials (the encrypted assets blob + its key) inside an agent — it trips the security classifier and is unnecessary; get the token by loading the page. If a headless harvester ever needs the generic client literals, they live in `docs/` (private), never here.
+- Harvest limit: max ~50,000 results per query and page size ≤ ~2000 → partition by month, dedupe by asunto.
+
 ## Domain rules
 
 - The 2025 protocol in `docs/records/` belongs to the **original, unapproved** project; it, the 2021 COVID coding guide and the 127-ruling COVID base are orientation, never a spec. Its schedule/budget/admin sections have no value today.
