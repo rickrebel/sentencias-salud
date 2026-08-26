@@ -4,7 +4,7 @@ Platform and replicable methodology to collect, pre-select (AI + human review) a
 
 ## Status
 
-No code yet — only process documentation. Next session bootstraps the monorepo (`api/` Django + `nuxt/`), starting from the shared "collections" engine (schema-driven catalogs/CRUD used in onigies and ocsa), not from scratch.
+No Django yet. What exists in code: the metadata harvester (`api/harvest/`, plain Python + `requests`, nightly, resumable; see its README) and the exploration scripts against the source (`api/scripts/exploration/`). The monorepo proper (`api/` Django + `nuxt/`) is still to be bootstrapped from the shared "collections" engine (schema-driven catalogs/CRUD used in onigies and ocsa), not from scratch.
 
 ## Repos & docs
 
@@ -12,12 +12,13 @@ No code yet — only process documentation. Next session bootstraps the monorepo
 - `docs/` is a documenter root (`docs/.documenter.json`); validate with `node ~/.claude/skills/documenter/scripts/validate.mjs` run **from `docs/`** (from the repo root it sees 0 documents).
 - Two commits per docs change: one inside `docs/`, one in the root updating the submodule pointer.
 - Themes are `reference` docs; tasks are flat and closable and point to their theme via `related`.
+- Tests: see `TESTING.md`.
 
 ## Source (BuscadorSISE)
 
 - The search API (`apisise.cjf.gob.mx`) is effectively public: its Bearer token is issued anonymously on page load, lasts 8 h, and works from plain `curl`. No login and no reCAPTCHA on search or download. **The token is all an agent needs** to read the API.
 - Do NOT re-derive or handle the site's embedded client credentials (the encrypted assets blob + its key) inside an agent — it trips the security classifier and is unnecessary; get the token by loading the page. If a headless harvester ever needs the generic client literals, they live in `docs/` (private), never here.
-- Harvest limit: max ~50,000 results per query and page size ≤ ~2000 → partition by month, dedupe by asunto.
+- Reading rule: one request per day covering the whole slice (`size` 4000; max observed ~2,400 hits/day). Pagination is unreliable by design (result order varies between identical calls) — never page. A 500 with a `text/html` body is a poisoned row: skip and count it in the main harvest; rescue narrows by value lists (states, organs), never by position.
 
 ## Domain rules
 

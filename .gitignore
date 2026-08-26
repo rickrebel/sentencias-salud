@@ -1,1 +1,22 @@
 .idea/
+
+# Artefactos del navegador instrumentado (Playwright MCP)
+.playwright-mcp/
+
+# Token anónimo del BuscadorSISE y muestras locales
+token.txt
+api/media/
+
+# Cosecha de metadatos del BuscadorSISE (datos y bitácoras locales)
+api/harvest/data/
+api/harvest/logs/
+api/harvest/token.txt
+*.pid
+__pycache__/
+.claude/*.py
+
+# Caché de pytest
+.pytest_cache/
+
+# Capturas crudas de la API en experimentos
+api/scripts/exploration/**/out/
