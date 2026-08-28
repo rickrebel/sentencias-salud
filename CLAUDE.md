@@ -10,7 +10,7 @@ No Django yet. What exists in code: the metadata harvester (`api/harvest/`, plai
 
 - Public repo: `rickrebel/sentencias-salud`. `docs/` is a **private** git submodule (`rickrebel/sentencias-salud-docs`): process docs hold transcripts and budgets. Without access, `docs/` is empty and everything else still works.
 - `docs/` is a documenter root (`docs/.documenter.json`); validate with `node ~/.claude/skills/documenter/scripts/validate.mjs` run **from `docs/`** (from the repo root it sees 0 documents).
-- Two commits per docs change: one inside `docs/`, one in the root updating the submodule pointer.
+- `docs/` works on the same branch name as the root repo. Its pointer rides inside the code commit that motivated the docs change, at most once per branch — never as a stand-alone pointer commit, except at merge with `main` if the branch left docs progress unpinned.
 - Themes are `reference` docs; tasks are flat and closable and point to their theme via `related`.
 - Tests: see `TESTING.md`.
 
