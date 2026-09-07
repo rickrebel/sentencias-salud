@@ -24,7 +24,11 @@ import urllib.error
 import urllib.request
 
 BASE = "https://apisise.cjf.gob.mx/bss/"
-TOKEN_FILE = os.path.expanduser("~/.cache/sentencias-salud/token.txt")
+TOKEN_FILE = os.environ.get(
+    "SISE_TOKEN",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                 "..", "..", "..", "harvest", "token.txt"),
+)
 OUT = os.environ.get(
     "SISE_OUT",
     "/home/rick/dev/ibero/sentencias-salud/docs/records/assets/"
