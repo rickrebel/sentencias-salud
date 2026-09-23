@@ -10,6 +10,11 @@
 // be costed. Resumable: asuntos already in the output file are skipped.
 //
 // Usage: node resolve_urls.mjs --sample <csv> --out <jsonl> [--limit N]
+//        node resolve_urls.mjs --asuntos <csv> --out <jsonl> [--limit N]
+//
+// --asuntos takes the ranked candidates of pick_organ_asuntos.py: the goal
+// there is one resolved URL per court (its idOrgano), so once a court has
+// one, the rest of its candidates are skipped.
 
 import {
   appendFileSync, readFileSync, existsSync, readdirSync,
@@ -22,13 +27,17 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PAGE = 'https://ejusticia.cjf.gob.mx/BuscadorSISE/';
 const PAUSE_MS = 1500;
+// Same string as UA in download_sample.py: the source sees one identifiable
+// client whether the request comes from Python or from the browser.
+const UA = 'sentencias-salud (Coordinacion de las Clinicas Juridicas - '
+  + 'Ibero CDMX; ricardo@yeeko.org)';
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(name);
   return i >= 0 ? process.argv[i + 1] : fallback;
 }
 
-const SAMPLE = arg('--sample', join(
+const SAMPLE = arg('--asuntos', null) || arg('--sample', join(
   HERE, '..', '..', 'harvest', 'data', 'samples',
   '2026-09-22-muestra-1100', 'sample_asuntos.csv'));
 const OUT = arg('--out', join(
@@ -92,6 +101,20 @@ if (existsSync(OUT)) {
     } catch { /* línea partida */ }
   }
 }
+// Solo en modo --asuntos las filas traen organo_base.
+const perCourt = sample.length > 0 && 'organo_base' in sample[0];
+const courtOf = new Map(sample.map((r) => [r.asunto_neun_id, r.organo_base]));
+const courtsDone = new Set();
+function markCourt(rec) {
+  if (perCourt && rec.urls.some((u) => u.url)) {
+    courtsDone.add(courtOf.get(String(rec.asunto_neun_id)));
+  }
+}
+if (perCourt && existsSync(OUT)) {
+  for (const line of readFileSync(OUT, 'utf8').split('\n')) {
+    try { markCourt(JSON.parse(line)); } catch { /* vacía o partida */ }
+  }
+}
 const todo = sample.filter((r) => !done.has(r.asunto_neun_id))
   .slice(0, Math.max(0, LIMIT - done.size));
 console.log(`pendientes ${todo.length} de ${sample.length}, `
@@ -99,7 +122,9 @@ console.log(`pendientes ${todo.length} de ${sample.length}, `
 
 const { chromium } = loadPlaywright();
 const browser = await chromium.launch({ headless: true });
-const context = await browser.newContext({ acceptDownloads: false });
+const context = await browser.newContext({
+  acceptDownloads: false, userAgent: UA,
+});
 let consecutiveFailures = 0;
 
 // La fuente es intermitente: la misma consulta devuelve a veces tabla vacía
@@ -152,13 +177,17 @@ async function resolveOne(item, intento) {
       await rows.nth(i).locator('lib-boton-sentencia-vp button').first()
         .click();
       const resp = await respPromise;
-      let url = null, status = null, nota = null;
+      let url = null, status = null, nota = null, pnt = false;
       if (resp) {
         status = resp.status();
         try {
           const raw = await resp.text();
           url = JSON.parse(raw)?.data?.sURLVesionPublica || null;
           if (!url) nota = raw.slice(0, 400);
+          // La leyenda de la PNT puede caer después del corte de la nota.
+          if (!url && /Transparencia|deberá requerirse/i.test(raw)) {
+            pnt = true;
+          }
         } catch { nota = 'respuesta no JSON'; }
       } else {
         nota = 'sin respuesta del servicio';
@@ -167,7 +196,7 @@ async function resolveOne(item, intento) {
         [popupPromise, new Promise((r) => setTimeout(() => r(null), 2000))]);
       if (popup && popup.close) await popup.close().catch(() => { });
       rec.urls.push({
-        fila: i, url, http: status, nota,
+        fila: i, url, http: status, nota, pnt,
         segundos: (Date.now() - tRow) / 1000,
       });
     }
@@ -181,7 +210,8 @@ async function resolveOne(item, intento) {
       // La negativa de la fuente trae la leyenda de la Ley de Transparencia;
       // sin ella, lo más probable es que la app no hubiera terminado de
       // autenticarse, y eso sí es un fallo del script que toca reintentar.
-      rec.error = rec.urls.some((u) => /Transparencia/i.test(u.nota || ''))
+      rec.error = rec.urls.some(
+        (u) => u.pnt || /Transparencia/i.test(u.nota || ''))
         ? 'remite a la PNT' : 'sin url resuelta';
     }
   } catch (e) {
@@ -194,6 +224,7 @@ async function resolveOne(item, intento) {
 
 for (const item of todo) {
   const neun = item.asunto_neun_id;
+  if (perCourt && courtsDone.has(item.organo_base)) continue;
   let rec = await resolveOne(item, 1);
   if (rec.error && rec.error !== 'remite a la PNT') {
     await new Promise((r) => setTimeout(r, PAUSE_MS));
@@ -201,7 +232,9 @@ for (const item of todo) {
     retry.secs.total += rec.secs.total;
     rec = retry;
   }
+  if (perCourt) rec.organo_base = item.organo_base;
   appendFileSync(OUT, JSON.stringify(rec) + '\n');
+  markCourt(rec);
   console.log(neun, rec.error ? 'ERROR ' + rec.error
     : `${rec.urls.filter((u) => u.url).length}/${rec.n_filas} urls`,
     rec.secs.total.toFixed(1) + 's');

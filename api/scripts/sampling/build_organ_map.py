@@ -3,9 +3,9 @@
 
 `idOrgano` is the only field of the public-document name that the harvest
 does not carry: the first four digits of `arch=` in a resolved URL. Every
-URL already resolved (pilot, october batch, the 2026-08-25 probe) is a
-free observation of one court's id, so they are pooled here instead of
-being re-resolved with a browser.
+URL already resolved (pilot, organ pass, october batch, the 2026-08-25
+probe) is a free observation of one court's id, so they are pooled here
+instead of being re-resolved with a browser.
 
 Coverage is reported against the administrative frame (Materia
 Administrativa of the harvested metadata), weighted by rows, because a
@@ -16,6 +16,7 @@ Usage: python3 build_organ_map.py [--out PATH] [--procs N]
 
 import argparse
 import collections
+import csv
 import glob
 import json
 import os
@@ -33,11 +34,14 @@ DOCS_MAP = os.path.join(
     REPO, 'docs', 'records', 'assets', '2026-08-25-buscadorsise',
     'otro-camino', 'organo-idorgano.json')
 ARCH_RE = re.compile(r'arch=(\d{4})')
-# Nombres con vigencia: "… (28/10/2003- 30/09/2024)" o "…(02/04/2001 -
-# 01/09/2024)". El sufijo distingue dos encarnaciones del mismo juzgado y
-# la fuente lo pega con o sin espacio: para agrupar hace falta quitarlo.
-VIGENCIA_RE = re.compile(r'\s*\(\s*\d{2}/\d{2}/\d{4}\s*-\s*\d{2}/\d{2}/\d{4}'
-                         r'\s*\)\s*$')
+# Nombres con vigencia: "… (28/10/2003- 30/09/2024)", "…(2/4/2001 -
+# 15/11/2022)" o "… (2/4/2001) - (30/11/2022)". El sufijo distingue dos
+# encarnaciones del mismo juzgado y la fuente lo escribe con o sin espacio,
+# con día y mes de uno o dos dígitos, y en uno o dos paréntesis: para
+# agrupar hace falta quitarlo.
+_DATE = r'\s*\d{1,2}/\d{1,2}/\d{4}\s*'
+VIGENCIA_RE = re.compile(r'\s*\((?:%s-%s|%s\)\s*-\s*\(%s)\)\s*$'
+                         % (_DATE, _DATE, _DATE, _DATE))
 
 
 def base_name(name):
@@ -122,6 +126,12 @@ def main():
         'piloto-1100': from_pilot(
             pairs, os.path.join(SAMPLE, 'resolved_urls.jsonl'),
             'piloto-1100'),
+        'organos-1100': from_pilot(
+            pairs, os.path.join(SAMPLE, 'resolved_urls_organs.jsonl'),
+            'organos-1100'),
+        'organos-marco': from_pilot(
+            pairs, os.path.join(DATA, 'resolved_urls_frame.jsonl'),
+            'organos-marco'),
     }
 
     out = {}
@@ -143,6 +153,10 @@ def main():
     covered = [n for n in total if base_name(n) in known]
     rows_cov = sum(total[n] for n in covered)
     ambiguous = [n for n, v in out.items() if len(v['idOrgano']) > 1]
+    sample = collections.Counter(
+        base_name(r['organo_nombre']) for r in csv.DictReader(
+            open(os.path.join(SAMPLE, 'sample_rows.csv'), encoding='utf-8')))
+    sample_missing = sorted(n for n in sample if n not in known)
 
     stats = {
         'observaciones_por_fuente': seen,
@@ -152,6 +166,13 @@ def main():
         'marco_admin_organos_cubiertos': len(covered),
         'marco_admin_filas': sum(total.values()),
         'marco_admin_filas_cubiertas': rows_cov,
+        'muestra_organos': len(sample),
+        'muestra_organos_cubiertos': len(sample) - len(sample_missing),
+        'muestra_filas': sum(sample.values()),
+        'muestra_filas_cubiertas': sum(
+            v for n, v in sample.items() if n in known),
+        'muestra_organos_sin_id': sample_missing,
+        'organos_ambiguos': ambiguous,
     }
     # La cobertura se cita en docs y en la task del mapa: queda en disco
     # junto al mapa para que nadie tenga que volver a correr la pasada.
