@@ -145,3 +145,44 @@ def test_classify_rules_and_foreign_names_left_out():
     assert lp.build_prefs([foreign])['courts'] == {}
     assert lp.build_prefs([mine, foreign])['courts'][COURT]['all'] == \
         {'old': 1}
+
+
+# --- (7) the learner reads several samples and their fallback ---------------
+
+def test_gather_reads_log_and_fallback_of_every_sample_dir(monkeypatch,
+                                                           tmp_path):
+    monkeypatch.setattr(lp, 'DATA', str(tmp_path))
+    monkeypatch.setattr(lp, 'OCTOBER', str(tmp_path / 'absent'))
+    monkeypatch.setattr(lp, 'AUGUST', str(tmp_path / 'absent'))
+    monkeypatch.setattr(ds, 'ORGAN_MAP', str(tmp_path / 'absent.json'))
+    head = IDORG + NEUN.zfill(12)
+    other = '9243038'
+    fields = ('asunto_neun_id,sintesis_orden,numero_orden,'
+              'fecha_sentencia,organo_nombre\n')
+    dirs = []
+    for name, neun, s, n in (('a', NEUN, 43, 2), ('b', other, 5, 1)):
+        d = tmp_path / name
+        d.mkdir()
+        (d / 'sample_rows.csv').write_text(
+            fields + '%s,%d,%d,14-03-2011,%s\n' % (neun, s, n, COURT),
+            encoding='utf-8')
+        dirs.append(str(d))
+    log = {'key': ds.row_key(NEUN, 43, 2), 'via': 'probe', 'outcome': 'pdf',
+           'arch': head + '043', 'rule': 'modern-s'}
+    (tmp_path / 'a' / 'download_log.jsonl').write_text(
+        json.dumps(log) + '\n', encoding='utf-8')
+    url = ('https://sise.cjf.gob.mx/SVP/word1.aspx?arch=%s.pdf&sec=x'
+           % (IDORG + other.zfill(12) + '0005001'))
+    fb = {'asunto_neun_id': other, 'urls': [{'fila': 0, 'url': url}],
+          'rows': ['x 14-03-2011 y']}
+    (tmp_path / 'b' / 'resolved_urls_fallback.jsonl').write_text(
+        json.dumps(fb) + '\n', encoding='utf-8')
+
+    obs, log_hits, by_key, _ = lp.gather(1, False, dirs)
+    assert [o['rule'] for o in obs['log']] == ['modern-s']
+    assert [(o['neun'], o['rule']) for o in obs['fallback']] == \
+        [(other, 'old')]
+    assert set(log_hits) == {ds.row_key(NEUN, 43, 2)}
+    assert len(by_key) == 2
+    uniq, _ = lp.dedupe(obs)
+    assert {o['source'] for o in uniq} == {'log', 'fallback'}

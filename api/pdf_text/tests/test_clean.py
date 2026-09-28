@@ -1,8 +1,9 @@
 """Regression tests of the pdf_text cleaner.
 
 Tests 1-4 run on synthetic page geometry, the same dicts `read_lines`
-builds from `pdftotext -bbox-layout`; test 5 writes small PDFs to tmp_path,
-because the tail cut and the raw tail go through poppler.
+builds from `pdftotext -bbox-layout`; tests 5-6 write small PDFs to
+tmp_path, because the tail cut, the raw tail and the verification go
+through poppler.
 """
 
 import os
@@ -16,6 +17,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
 
 from pdf_text import clean as cl  # noqa: E402
+from pdf_text import tail as tl  # noqa: E402
 from pdf_text import verify as vf  # noqa: E402
 from pdf_writer import write_pdf  # noqa: E402
 
@@ -188,10 +190,25 @@ def test_tail_cuts_at_whatever_comes_first(tmp_path):
     assert 'hago constar' in tail
 
     long_page = long_body_page_with_phrase()
-    assert len(' '.join(long_page)) > cl.CERT_MAX_CHARS
+    assert len(' '.join(long_page)) > tl.CERT_MAX_CHARS
     idx, tail = tail_of(tmp_path, 'body', [BODY, long_page, BODY])
     assert (idx['tail_first_page'], idx['tail_kind']) == (None, 'none')
     assert idx['pages_useful'] == 3
     assert tail == ''
     assert any('hago constar y certifico' in p['text']
                for p in idx['index'])
+
+
+@needs_poppler
+def test_zero_clean_chars_is_never_ok(tmp_path):
+    """6. Every line is a repeated header or folio, so the cleaner keeps 0
+    characters and expects to keep 0: the residual is 0, which alone would
+    pass the threshold."""
+    pages = [['JUZGADO QUINTO DE DISTRITO', 'Hoja %d' % n]
+             for n in range(1, 8)]
+    pdf = write_pdf(str(tmp_path / 'zero.pdf'), pages)
+    idx = cl.clean(pdf, 'zero')
+    idx['text_ratio'] = vf.text_ratio(idx, pdf)
+    idx['ratio_residual'] = vf.residual(idx)
+    assert idx['chars'] == 0 and idx['ratio_residual'] is not None
+    assert vf.grade(idx) != 'ok'

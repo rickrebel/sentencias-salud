@@ -3,7 +3,7 @@
 Un solo nivel montado: **pytest sin red**. Las peticiones se simulan con dobles de la biblioteca estándar (una sesión falsa que sustituye a `requests.Session`), así que las pruebas no abren ningún socket ni escriben en `api/harvest/data/` ni en `api/media/`. No hay configuración de pytest ni credenciales: cada carpeta `tests/` se basta a sí misma y la suite completa corre desde `api/`:
 
 ```bash
-cd api && python3 -m pytest harvest/tests pdf_text/tests scripts/sampling/tests -q     # 36 pruebas
+cd api && python3 -m pytest harvest/tests pdf_text/tests scripts/sampling/tests -q     # 38 pruebas
 ```
 
 ## Cosechador (`api/harvest/tests/`)
@@ -33,16 +33,17 @@ cd api/harvest && python3 -m pytest tests/ -q     # 16 pruebas
 
 ## Limpiador de PDF (`api/pdf_text/tests/`)
 
-`tests/test_clean.py` cubre las reglas del limpiador que protegen al cuerpo y el corte de la cola. Las pruebas 1 a 4 trabajan sobre geometría sintética —los mismos diccionarios que `read_lines` arma con el XML de `pdftotext -bbox-layout`—; la 5 escribe PDF pequeños en el directorio temporal de pytest con `tests/pdf_writer.py` (Helvetica, sin datos personales ni binarios en el repo) y necesita `pdftotext` de poppler, sin el cual se salta. Cada prueba falla si se revierte la regla que protege:
+`tests/test_clean.py` cubre las reglas del limpiador que protegen al cuerpo y el corte de la cola. Las pruebas 1 a 4 trabajan sobre geometría sintética —los mismos diccionarios que `read_lines` arma con el XML de `pdftotext -bbox-layout`—; las 5 y 6 escriben PDF pequeños en el directorio temporal de pytest con `tests/pdf_writer.py` (Helvetica, sin datos personales ni binarios en el repo) y necesitan `pdftotext` de poppler, sin el cual se saltan. Cada prueba falla si se revierte la regla que protege:
 
 - Sin encabezado, la primera línea de cuerpo arriba de 0.09 del alto de página se queda como cuerpo; con las bandas fijas de agosto desaparecía.
 - Un encabezado de dos renglones en las páginas nones sale etiquetado `encabezado` renglón por renglón, aunque el segundo baje más que la primera línea de cuerpo de las pares, y el número de expediente no se cuela como párrafo.
 - Un folio de número cambiante («Hoja 9», «Hoja 10») se reconoce por su forma y acota el pie desde su punto más alto.
 - La red de última instancia: una línea de altura de cuerpo que empieza en minúscula y cuya forma se repite arriba de varias páginas sigue siendo cuerpo.
+- Un documento cuyos renglones son todos encabezado o folio deja 0 caracteres limpios con residuo 0, y su estado no puede ser `ok` (sale `empty`); antes el residuo solo bastaba para aprobarlo.
 - La cola corta por lo que venga antes: acuse seguido de certificación corta en el acuse (`tail_kind='acuse'`), la certificación sola corta ahí, y una página de cuerpo de más de 800 caracteres con «hago constar y certifico» y «versión pública» no corta.
 
 ```bash
-cd api && python3 -m pytest pdf_text/tests -q     # 5 pruebas
+cd api && python3 -m pytest pdf_text/tests -q     # 6 pruebas
 ```
 
 ## Muestra y descarga determinista (`api/scripts/sampling/tests/`)
@@ -54,19 +55,20 @@ cd api && python3 -m pytest pdf_text/tests -q     # 5 pruebas
 - Los desenlaces de `probe_row`: acierto en la primera ronda da `pdf`, acierto en la ventana da `suspect`, candidatos agotados dan `not-reached`, un 5xx persistente da `error` tras tres reintentos sobre el mismo nombre, y un archivo ya en disco no gasta petición.
 - La reanudación: las filas con desenlace final se saltan, una `no-idorgano` se reintenta cuando el mapa ya tiene su juzgado (buscado por el nombre sin vigencia) y sigue saltándose si no, y una `error` se reintenta.
 
-`tests/test_probe_prefs.py` cubre el orden aprendido de la primera ronda (`probe_prefs.json`) con un archivo de preferencias temporal. Es provisional: fija la ponderación tal como está con 1 050 nombres conocidos y se afinará cuando las reglas aprendidas vivan en la base de datos. Seis funciones:
+`tests/test_probe_prefs.py` cubre el orden aprendido de la primera ronda (`probe_prefs.json`) con un archivo de preferencias temporal. Es provisional: fija la ponderación tal como está con 1 050 nombres conocidos y se afinará cuando las reglas aprendidas vivan en la base de datos. Siete funciones:
 
 - Un juzgado cuyo registro del mismo año es todo de la familia antigua pone `old` primero en una sentencia de 2020, y un juzgado ausente de las preferencias conserva el orden por época.
 - Un solo avistamiento de una regla rara (`modern-n`) no supera a `modern-s`; cuatro sí.
 - La frontera de familia: un documento moderno del juzgado fechado antes de la fila, sin ninguno antiguo después, pone la familia moderna primero aun en 2012.
 - `candidates(..., prefs={})` es el orden por época en 2011, 2017 y 2020, y la ventana es idéntica con y sin preferencias.
 - `load_prefs` con una ruta inexistente deja `PREFS == {}`, y `probe_row` pasa a `candidates()` el nombre del juzgado sin vigencia y la fecha en ISO.
+- El aprendiz (`gather()`) lee el log de sondas y el `resolved_urls_fallback.jsonl` de cada `--sample-dir`, y conserva ambas fuentes tras el dedupe (usa dos NEUN distintos, así que no ejercita la fusión de una fila presente en dos muestras).
 - El clasificador del aprendiz (`classify()`) reconoce `modern-s`, `modern-n`, `window-modern`, `old`, `old-002`, `window-old` y `other`, y un nombre de otro NEUN (`foreign`) queda fuera de `build_prefs`.
 
 `tests/test_build_organ_map.py` cubre `base_name`: quita las tres formas de sufijo de vigencia —`(28/10/2003- 30/09/2024)`, `(2/4/2001) - (30/11/2022)` y `(1/6/2004 - 15/11/2022)`— y deja intacto cualquier otro paréntesis.
 
 ```bash
-cd api && python3 -m pytest scripts/sampling/tests -q     # 15 pruebas
+cd api && python3 -m pytest scripts/sampling/tests -q     # 16 pruebas
 ```
 
 No hay pruebas e2e todavía: no hay interfaz.

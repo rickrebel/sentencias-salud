@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """Learn, per court and year, which name rule its public documents follow.
 
-Every document name already known (probe hits of the download log, URLs a
-browser resolved, the October batch, the 2026-08-25 probe) is paired with
-its metadata row (court, date, SintesisOrden S, NumeroOrden N) and
+Every document name already known (probe hits of each sample's download
+log, URLs a browser resolved for the pilot, the organs pass and the
+downloader's fallback, the October batch, the 2026-08-25 probe) is paired
+with its metadata row (court, date, SintesisOrden S, NumeroOrden N) and
 classified with the rules of `download_sample.candidates()`. The counts
 go to `probe_prefs.json`, which the downloader reads to order its first
 round of candidates, and a leave-one-out replay measures the gain.
 
 Usage:
     python3 learn_probe_rules.py [--out PATH] [--procs N] [--no-metadata]
+                                 [--sample-dir DIR ...]
     python3 learn_probe_rules.py --replay     # also score old vs new order
 """
 
@@ -152,11 +154,11 @@ def load_json(path):
         if os.path.exists(path) else {}
 
 
-def from_log(sample_by_key):
-    """Probe hits of the running download; browser URLs the log carries
-    are taken from their own source files instead."""
+def from_log(sample_by_key, path):
+    """Probe hits of a download log; browser URLs the log carries
+    (via pilot or fallback) are taken from their own source files."""
     latest = {}
-    for rec in jsonl(ds.LOG):
+    for rec in jsonl(path):
         latest[rec['key']] = rec
     out, log_hits = [], {}
     for rec in latest.values():
@@ -238,29 +240,42 @@ def august_sources(names_by_id):
 
 # --- the whole evidence -----------------------------------------------------
 
-def gather(procs, use_metadata=True):
-    rows = []
-    with open(os.path.join(SAMPLE, 'sample_rows.csv'),
+def sample_rows(sample_dir):
+    with open(os.path.join(sample_dir, 'sample_rows.csv'),
               encoding='utf-8') as fh:
-        for r in csv.DictReader(fh):
-            rows.append(make_row(r['asunto_neun_id'], r['sintesis_orden'],
-                                 r['numero_orden'], r['fecha_sentencia'],
-                                 r['organo_nombre']))
+        return [make_row(r['asunto_neun_id'], r['sintesis_orden'],
+                         r['numero_orden'], r['fecha_sentencia'],
+                         r['organo_nombre']) for r in csv.DictReader(fh)]
+
+
+def gather(procs, use_metadata=True, sample_dirs=None):
+    """Samples may overlap: a row drawn twice is one row (same key)."""
+    sample_dirs = sample_dirs or [SAMPLE]
+    per_sample, sample_by_key = [], {}
+    for d in sample_dirs:
+        rows = sample_rows(d)
+        by_asunto = collections.defaultdict(list)
+        for r in rows:
+            by_asunto[r['asunto_neun_id']].append(r)
+        per_sample.append((d, rows, by_asunto))
+        for r in rows:
+            sample_by_key.setdefault(r['key'], r)
     sample_by_asunto = collections.defaultdict(list)
-    for r in rows:
+    for r in sample_by_key.values():
         sample_by_asunto[r['asunto_neun_id']].append(r)
-    sample_by_key = {r['key']: r for r in rows}
 
     names_by_id = collections.defaultdict(list)
     for name, e in load_json(ds.ORGAN_MAP).items():
         for idorg in e.get('idOrgano') or []:
             names_by_id[idorg].append(name)
 
-    organs = os.path.join(SAMPLE, 'resolved_urls_organs.jsonl')
+    organs = [os.path.join(d, 'resolved_urls_organs.jsonl')
+              for d in sample_dirs]
     frame = os.path.join(DATA, 'resolved_urls_frame.jsonl')
     october = october_sources()
     august, august_pending = august_sources(names_by_id)
-    need = (resolved_neuns(organs) | resolved_neuns(frame)
+    need = (set().union(*map(resolved_neuns, organs))
+            | resolved_neuns(frame)
             | {x[1] for x in october} | {x[1] for x in august_pending})
     need -= set(sample_by_asunto)
     t0 = time.time()
@@ -269,14 +284,25 @@ def gather(procs, use_metadata=True):
     all_rows = dict(meta)
     all_rows.update(sample_by_asunto)
 
-    log_obs, log_hits = from_log(sample_by_key)
-    obs = {'log': log_obs,
-           'pilot': from_resolved(
-               os.path.join(SAMPLE, 'resolved_urls.jsonl'), 'pilot',
-               sample_by_asunto),
-           'organs': from_resolved(organs, 'organs', all_rows),
-           'frame': from_resolved(frame, 'frame', all_rows),
-           'august': august}
+    obs = collections.defaultdict(list)
+    log_hits = {}
+    for d, rows, by_asunto in per_sample:
+        log_obs, hits = from_log({r['key']: r for r in rows},
+                                 os.path.join(d, 'download_log.jsonl'))
+        obs['log'] += log_obs
+        log_hits.update(hits)
+        obs['pilot'] += from_resolved(
+            os.path.join(d, 'resolved_urls.jsonl'), 'pilot', by_asunto)
+        obs['organs'] += from_resolved(
+            os.path.join(d, 'resolved_urls_organs.jsonl'), 'organs',
+            all_rows)
+        # The downloader pairs fallback URLs to its own sample's rows;
+        # pairing against the same rows keeps both readings identical.
+        obs['fallback'] += from_resolved(
+            os.path.join(d, 'resolved_urls_fallback.jsonl'), 'fallback',
+            by_asunto)
+    obs['frame'] = from_resolved(frame, 'frame', all_rows)
+    obs['august'] = august
     unpaired = collections.Counter()
     for source, neun, stem, fecha, *_ in october + august_pending:
         row = pair(stem, all_rows.get(neun, []), fecha)
@@ -285,7 +311,7 @@ def gather(procs, use_metadata=True):
             continue
         obs.setdefault(source.split('-')[0], []).append(
             observation(source, stem, row))
-    return obs, log_hits, sample_by_key, {
+    return dict(obs), log_hits, sample_by_key, {
         'metadata_asuntos_wanted': len(need),
         'metadata_asuntos_found': len(meta),
         'metadata_seconds': round(meta_secs, 1),
@@ -295,7 +321,8 @@ def gather(procs, use_metadata=True):
 def dedupe(obs):
     """One observation per document; a browser URL outranks a probe hit
     (the probe only sees the first name in its own order that answers)."""
-    rank = ['pilot', 'organs', 'frame', 'october', 'august', 'log']
+    rank = ['pilot', 'organs', 'fallback', 'frame', 'october', 'august',
+            'log']
     by_key, conflicts = {}, []
     for src in rank:
         for ob in obs.get(src, []):
@@ -569,15 +596,19 @@ def main():
     ap.add_argument('--no-metadata', action='store_true',
                     help='skip the 3.7 GB frame scan (fewer sources pair)')
     ap.add_argument('--replay', action='store_true')
+    ap.add_argument('--sample-dir', action='append', dest='sample_dirs',
+                    help='repeatable; default: the 1 294-asunto sample')
     args = ap.parse_args()
+    dirs = [os.path.abspath(d) for d in args.sample_dirs or [SAMPLE]]
 
     obs, log_hits, sample_by_key, meta_info = gather(
-        args.procs, not args.no_metadata)
+        args.procs, not args.no_metadata, dirs)
     uniq, conflicts = dedupe(obs)
     prefs = build_prefs(uniq)
     prefs['generated'] = time.strftime('%Y-%m-%dT%H:%M:%S%z')
     prefs['sources'] = {k: len(v) for k, v in obs.items()}
     prefs['documents'] = len(uniq)
+    prefs['samples'] = [os.path.basename(d) for d in dirs]
     with open(args.out, 'w', encoding='utf-8') as fh:
         json.dump(prefs, fh, ensure_ascii=False, indent=1, sort_keys=True)
     summary(obs, uniq, conflicts, prefs, meta_info, log_hits)

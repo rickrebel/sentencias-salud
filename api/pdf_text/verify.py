@@ -86,8 +86,10 @@ def grade(idx):
     El umbral se afloja con el ruido del documento (el porcentaje) y trae un
     piso fijo (la constante) para lo que todo documento trae de sobra:
     testados que los dos lados escriben distinto, guionado, espaciado.
+    Sin caracteres limpios es 'empty' aunque el residuo cuadre: si todo es
+    encabezado o pie, lo esperado también es 0 y el residuo da 0.
     """
-    if idx.get('ratio_residual') is None:
+    if idx.get('ratio_residual') is None or not idx.get('chars'):
         return 'empty'
     limit = -(RESIDUAL_CONST + RESIDUAL_PCT * idx['expected_ratio'])
     return 'ok' if idx['ratio_residual'] >= limit else 'suspect'
