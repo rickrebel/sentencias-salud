@@ -183,13 +183,26 @@ def margins(ls):
     return float(left), float(right)
 
 
+def body_drop(line, rep):
+    """Por qué una línea de cuerpo queda fuera de los párrafos, o None.
+
+    Una sola función para `paragraphs`, `expected_ratio` y viz.py, para que
+    el visualizador muestre la decisión que el limpiador toma de verdad.
+    """
+    if line['t'] == WATERMARK:
+        return 'watermark'
+    if RE_PAGENUM.match(line['t']):
+        return 'pagenum'
+    if line['t'] in rep:
+        return 'repeated'
+    return None
+
+
 def paragraphs(pages, rep):
     body = []
     for p in pages:
-        ls = [l for l in p['lines'] if l['c'] == 'cuerpo'
-              and l['t'] not in rep
-              and l['t'] != WATERMARK
-              and not RE_PAGENUM.match(l['t'])]
+        ls = [l for l in p['lines']
+              if l['c'] == 'cuerpo' and not body_drop(l, rep)]
         # Orden de lectura reconstruido por coordenadas, no por el flow de
         # poppler: es lo que arregla los documentos justificados antiguos.
         ls = merge_visual_lines(ls, p['med_h'])
@@ -210,7 +223,9 @@ def paragraphs(pages, rep):
                          round(max(l['x1'] for l in cur), 1),
                          round(cur[-1]['y1'], 1)],
                 'lines': len(cur),
-                'text': join_lines([l['t'] for l in cur])})
+                'text': join_lines([l['t'] for l in cur]),
+                # Para viz.py: el bbox de arriba no sirve si cruza página.
+                'members': list(cur)})
             cur.clear()
 
     prev = None
@@ -295,14 +310,28 @@ def apply_redactions(text):
     return RE_REDACTION.sub(sub, text), lengths
 
 
+def analyze(pdf_path):
+    """Las decisiones del limpiador sobre un PDF, antes de armar el índice.
+
+    Aparte de `clean` para que viz.py dibuje exactamente lo que el limpiador
+    decidió, sin una copia de la secuencia que pueda desfasarse.
+    """
+    pages = read_lines(pdf_to_bbox_xml(pdf_path))
+    useful, tail = split_tail(pages)
+    doc_h = classify(useful)
+    rep = repeated(useful)
+    return {'pages': pages, 'useful': useful, 'tail': tail, 'doc_h': doc_h,
+            'rep': rep, 'paragraphs': paragraphs(useful, rep)}
+
+
 def clean(pdf_path, stem):
     """Devuelve el índice completo de un PDF (sin escribir nada)."""
-    pages = read_lines(pdf_to_bbox_xml(pdf_path))
-    n_all = len(pages)
-    useful, tail = split_tail(pages)
-    classify(useful)
-    rep = repeated(useful)
-    ps = paragraphs(useful, rep)
+    return build_index(analyze(pdf_path), stem)
+
+
+def build_index(a, stem):
+    n_all, useful, tail = len(a['pages']), a['useful'], a['tail']
+    rep, ps = a['rep'], a['paragraphs']
     for i, p in enumerate(ps, 1):
         p['id'] = f'P{i:04d}'
         p['text'], lengths = apply_redactions(p['text'])
@@ -357,9 +386,7 @@ def expected_ratio(pages, rep):
             total += n
             if l['c'] == 'nota':
                 kept += n
-            elif (l['c'] == 'cuerpo' and l['t'] not in rep
-                    and l['t'] != WATERMARK
-                    and not RE_PAGENUM.match(l['t'])):
+            elif l['c'] == 'cuerpo' and not body_drop(l, rep):
                 kept += n
     return round(kept / total, 3) if total else None
 

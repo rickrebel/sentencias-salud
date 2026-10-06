@@ -33,6 +33,8 @@ cd api/harvest && python3 -m pytest tests/ -q     # 16 pruebas
 
 ## Limpiador de PDF (`api/pdf_text/tests/`)
 
+`clean2.py` y `clean2_geo.py` (limpiador nuevo, 5 de octubre de 2026) y `viz.py` (visualizador) no tienen pruebas todavía: las listas propuestas viven en las tasks del grafo que construyen cada uno (`docs/tasks/`), y se escriben cuando Ricardo las fije.
+
 `tests/test_clean.py` cubre las reglas del limpiador que protegen al cuerpo y el corte de la cola. Las pruebas 1 a 4 trabajan sobre geometría sintética —los mismos diccionarios que `read_lines` arma con el XML de `pdftotext -bbox-layout`—; las 5 y 6 escriben PDF pequeños en el directorio temporal de pytest con `tests/pdf_writer.py` (Helvetica, sin datos personales ni binarios en el repo) y necesitan `pdftotext` de poppler, sin el cual se saltan. Cada prueba falla si se revierte la regla que protege:
 
 - Sin encabezado, la primera línea de cuerpo arriba de 0.09 del alto de página se queda como cuerpo; con las bandas fijas de agosto desaparecía.

@@ -14,7 +14,7 @@ URL = re.compile(r'https?://\S+|www\.\S+')
 WATERMARK = re.compile(r'PJF\s*-\s*Versi[oó]n\s*P[uú]blica', re.I)
 # Los dos lados escriben el testado distinto ([TESTADO] vs la corrida de
 # asteriscos): si no se borra, un documento muy testado parece pérdida.
-REDACTION = re.compile(r'\[TESTADO\]|\*{3,}')
+REDACTION = re.compile(r'\[TESTADO\]|\*{2,}')
 
 # El grado se decide por el residuo (medido menos esperado), no por el
 # ratio crudo: el ratio depende sobre todo de cuánto ruido traiga el PDF —el

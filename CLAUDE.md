@@ -33,6 +33,7 @@ No Django yet. What exists in code: the metadata harvester (`api/harvest/`, plai
 - The live list of questions for Fernanda is the task owned by `ricardo` in `docs/tasks/`; bring it to the meeting and tick answers there.
 - Meeting material is an accordion note in `docs/notes/` (dated; H2 blocks per theme; each point in bold with a one- or two-line explanation below), linked from the questions task for Fernanda.
 - Sessions run in duo mode: coordinator dialogues, executors do the volume.
+- Every document or asunto id cited to Ricardo carries the folder where he can open it (relative to `api/media/`), in the same paragraph as the case it illustrates.
 
 ## Never
 
