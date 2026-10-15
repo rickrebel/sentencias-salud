@@ -1,6 +1,6 @@
 """Smallest PDF that pdftotext reads: Helvetica, WinAnsi, one Tj per line.
 
-The tail tests need real pages because the cut and the raw tail go through
+The tests need real pages because cleaning and verification go through
 poppler; writing them here keeps personal data and binaries out of the repo.
 """
 

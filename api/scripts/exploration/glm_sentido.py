@@ -40,12 +40,13 @@ OUT_DIR = os.path.join(API, 'harvest', 'data', 'exploration',
 KEY_FILE = os.path.expanduser('~/.secrets/openrouter')
 URL = 'https://openrouter.ai/api/v1/chat/completions'
 MODEL = 'z-ai/glm-5.3-flash'
-PROMPT_VERSION = '2026-09-22.1'
+PROMPT_VERSION = '2026-10-14.1'
 RETRY_STATUS = {408, 409, 429, 500, 502, 503, 504, 529}
 # `empty` docs are excluded: their OCR text carries names the versión
 # pública had redacted as images.
 USABLE_STATUS = {'ok', 'suspect'}
-PARA_RE = re.compile(r'^\[(P\d{4})\|p\d+\]', re.M)
+# N: footnotes, listed after the paragraphs and citable like them.
+PARA_RE = re.compile(r'^\[([PN]\d{4})\|p\d+\]', re.M)
 
 TIPOS = ['sentencia', 'auto', 'acuerdo', 'resolucion_incidental',
          'remision', 'otro']
@@ -80,7 +81,9 @@ Eres un asistente de investigación jurídica. Recibirás el texto completo de \
 una resolución dictada en un juicio de amparo indirecto en México, en su \
 versión pública (los datos personales aparecen como [TESTADO]). El texto \
 viene dividido en párrafos; cada párrafo empieza con una etiqueta como \
-[P0142|p7], donde P0142 es el identificador del párrafo y p7 la página.
+[P0142|p7], donde P0142 es el identificador del párrafo y p7 la página. \
+Si el documento tiene notas al pie, van al final, tras la línea \
+«=== NOTAS AL PIE ===», con etiquetas como [N0003|p5].
 
 Lee el documento completo y responde, en el JSON solicitado:
 
@@ -127,14 +130,16 @@ ejemplo 1485/2009), sin prefijos como «juicio de amparo» ni sufijos de \
 cuaderno o mesa. Si el documento corresponde a un incidente o cuaderno \
 derivado, el número del juicio principal. null si no aparece.
 6. citas: para cada uno de tipo_documento, sentido, fecha_resolucion y \
-expediente, la lista de identificadores de párrafo que sustentan tu \
-respuesta, escritos exactamente como aparecen en la etiqueta, sin la \
-página: «P0142», nunca «P0142|p7» ni «142». Cita solo párrafos que \
-existen en el texto; si un campo es null, su lista va vacía.
+expediente, la lista de identificadores de párrafo o nota al pie que \
+sustentan tu respuesta, escritos exactamente como aparecen en la etiqueta, \
+sin la página: «P0142» o «N0003», nunca «P0142|p7» ni «142». Cita solo \
+párrafos o notas al pie que existen en el texto; si un campo es null, su \
+lista va vacía.
 7. confianza: un número de 0 a 1 sobre tu respuesta en conjunto; baja si el \
 texto está incompleto, mal reconocido o es ambiguo.
 
-No inventes: todo lo que respondas debe apoyarse en los párrafos citados.\
+No inventes: todo lo que respondas debe apoyarse en los párrafos o notas \
+al pie citados.\
 """
 
 
@@ -244,7 +249,7 @@ class OpenRouterBackend:
 
 def validate(resp, para_ids):
     """Schema checks the provider may not enforce, plus citation checks
-    against the paragraph ids actually present in the text."""
+    against the paragraph and footnote ids actually present in the text."""
     errs = []
     if resp.get('tipo_documento') not in TIPOS:
         errs.append('tipo_documento enum')
@@ -280,7 +285,8 @@ def load_docs():
 
 def load_done(path):
     """Ids with a parsed answer, and the cost already spent (every
-    record, failed ones included, so a resumed run respects the cap)."""
+    record, failed ones included, so a resumed run reports the true
+    cumulative cost)."""
     done, spent = set(), 0.0
     if not os.path.exists(path):
         return done, spent
@@ -301,7 +307,8 @@ def run_doc(backend, doc_id, cfg):
         text = fh.read()
     para_ids = set(PARA_RE.findall(text))
     rec = {'id': doc_id, 'model': MODEL, 'prompt_version': PROMPT_VERSION,
-           'paragraphs': len(para_ids), 'chars': len(text)}
+           'paragraphs': sum(i[0] == 'P' for i in para_ids),
+           'chars': len(text)}
     attempts = 0
     while True:
         attempts += 1
@@ -352,8 +359,6 @@ def main():
     ap.add_argument('--timeout', type=int, default=300)
     ap.add_argument('--retries', type=int, default=5)
     ap.add_argument('--reasoning-effort', default='low')
-    ap.add_argument('--cost-cap', type=float, default=10.0,
-                    help='USD, cumulative over the out file')
     ap.add_argument('--ignore-providers', default='')
     args = ap.parse_args()
 
@@ -376,24 +381,19 @@ def main():
         pending = pending[:args.limit]
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     print('model=%s prompt=%s total=%d done=%d pending=%d workers=%d '
-          'spent=$%.4f cap=$%.2f'
+          'spent=$%.4f'
           % (MODEL, PROMPT_VERSION, len(docs), len(done), len(pending),
-             args.workers, spent, args.cost_cap), flush=True)
+             args.workers, spent), flush=True)
 
     work = queue.Queue()
     for d in pending:
         work.put(d)
     lock = threading.Lock()
     out = open(args.out, 'a', encoding='utf-8')
-    state = {'n': 0, 't0': time.time(), 'cost': spent, 'err': 0,
-             'capped': False}
+    state = {'n': 0, 't0': time.time(), 'cost': spent, 'err': 0}
 
     def worker():
         while True:
-            with lock:
-                if state['cost'] >= args.cost_cap:
-                    state['capped'] = True
-                    return
             try:
                 doc_id = work.get_nowait()
             except queue.Empty:
@@ -429,9 +429,8 @@ def main():
         t.join()
     out.close()
     el = time.time() - state['t0']
-    print('%s %d calls in %.1f s, errors %d, cumulative cost $%.4f'
-          % ('STOPPED AT COST CAP:' if state['capped'] else 'done',
-             state['n'], el, state['err'], state['cost']), flush=True)
+    print('done %d calls in %.1f s, errors %d, cumulative cost $%.4f'
+          % (state['n'], el, state['err'], state['cost']), flush=True)
 
 
 if __name__ == '__main__':

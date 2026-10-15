@@ -33,7 +33,7 @@ SAMPLE = os.path.join(API, 'harvest', 'data', 'samples',
                       '2026-09-22-muestra-1100')
 OUT_DIR = os.path.join(API, 'harvest', 'data', 'exploration',
                        '2026-09-22-glm-sentido')
-PARA_RE = re.compile(r'^\[(P\d{4})\|p\d+\] ?(.*)$', re.M)
+PARA_RE = re.compile(r'^\[([PN]\d{4})\|p\d+\] ?(.*)$', re.M)
 EXP_RE = re.compile(r'(\d+)\s*/\s*(\d{4})')
 
 # classify.py label -> GLM values that count as agreement. None = the

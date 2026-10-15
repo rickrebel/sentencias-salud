@@ -10,6 +10,7 @@ por estilo y por palabra, y «misma letra» se compara en tamaño de fuente,
 no en altura de caja (que depende de la familia).
 """
 import re
+import subprocess
 import xml.etree.ElementTree as ET
 from collections import Counter
 
@@ -26,6 +27,17 @@ TINY_PT = 3.0                 # texto oculto del FIREL: fecha y firmante a 1 pt
 SMALL_DIGIT = 0.8             # dígito volado: <= esto × la letra vecina
 SEP_W = (142.0, 146.5)        # raya separadora de notas de Word (144 pt)
 SEP_MAX_H = 2.5
+
+
+def pdf_to_bbox_xml(pdf_path):
+    """XML de `pdftotext -bbox-layout` por stdout, sin archivo intermedio."""
+    proc = subprocess.run(
+        ['pdftotext', '-bbox-layout', str(pdf_path), '-'],
+        capture_output=True, timeout=600)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f'pdftotext -bbox-layout: {proc.stderr.decode()[:300]}')
+    return proc.stdout.decode('utf-8', 'replace')
 
 
 def read_boxes(xml_text):

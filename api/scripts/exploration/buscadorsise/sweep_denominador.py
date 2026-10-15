@@ -36,8 +36,8 @@ OUT = os.environ.get(
     "/home/rick/dev/ibero/sentencias-salud/docs/records/assets/"
     "2026-08-25-buscadorsise/denominator",
 )
-UA = ("sentencias-salud (Coordinación de las Clínicas Jurídicas - "
-      "Ibero CDMX; ricardo@yeeko.org)")
+UA = ("sentencias-salud (Centro Interdisciplinario para la "
+      "Enseñanza Clínica del Derecho, Ibero CDMX; ricardo@yeeko.org)")
 PAUSE = 0.5
 TOKEN = open(TOKEN_FILE).read().strip()
 

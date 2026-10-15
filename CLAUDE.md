@@ -4,21 +4,19 @@ Platform and replicable methodology to collect, pre-select (AI + human review) a
 
 ## Status
 
-No Django yet. What exists in code: the metadata harvester (`api/harvest/`, plain Python + `requests`, nightly, resumable; see its README) and the exploration scripts against the source (`api/scripts/exploration/`). The monorepo proper (`api/` Django + `nuxt/`) is still to be bootstrapped from the shared "collections" engine (schema-driven catalogs/CRUD used in onigies and ocsa), not from scratch.
+No Django yet. What exists in code is inventoried in `README.md` (§Qué hay en código) and in each module's README; do not duplicate it here. The monorepo proper (`api/` Django + `nuxt/`) is still to be bootstrapped from the shared "collections" engine (schema-driven catalogs/CRUD used in onigies and ocsa), not from scratch.
 
 ## Repos & docs
 
 - Public repo: `rickrebel/sentencias-salud`. `docs/` is a **private** git submodule (`rickrebel/sentencias-salud-docs`): process docs hold transcripts and budgets. Without access, `docs/` is empty and everything else still works.
-- `docs/` is a documenter root (`docs/.documenter.json`); validate with `node ~/.claude/skills/documenter/scripts/validate.mjs` run **from `docs/`** (from the repo root it sees 0 documents).
 - `docs/` works on the same branch name as the root repo. Its pointer rides inside the code commit that motivated the docs change, at most once per branch — never as a stand-alone pointer commit, except at merge with `main` if the branch left docs progress unpinned. The pointer moves only when the session close names it; if the merge is deferred, so is the pointer, and any amend to carry it is proposed in one line first.
-- Themes are `reference` docs; tasks are flat and closable and point to their theme via `related`.
 - Tests: see `TESTING.md`.
 
 ## Source (BuscadorSISE)
 
 - The search API (`apisise.cjf.gob.mx`) is effectively public: its Bearer token is issued anonymously on page load, lasts 8 h, and works from plain `curl`. No login and no reCAPTCHA on search or download. **The token is all an agent needs** to read the API.
 - Do NOT re-derive or handle the site's embedded client credentials (the encrypted assets blob + its key) inside an agent — it trips the security classifier and is unnecessary; get the token by loading the page. If a headless harvester ever needs the generic client literals, they live in `docs/` (private), never here.
-- Reading rule: one request per day covering the whole slice (`size` 4000; max observed ~2,400 hits/day). Pagination is unreliable by design (result order varies between identical calls) — never page. A 500 with a `text/html` body is a poisoned row: skip and count it in the main harvest; rescue narrows by value lists (states, organs), never by position.
+- Reading rule: one request per day covering the whole slice (`size` 4000; max observed ~2,400 hits/day). Pagination is unreliable by design (result order varies between identical calls) — never page. A 500 with a `text/html` body is a poisoned row: skip and count it in the main harvest; rescue narrows by value lists (states, then organs) down to the culprit organ; inside it, one-row pages are the only place where paging happens.
 
 ## Domain rules
 
@@ -30,9 +28,6 @@ No Django yet. What exists in code: the metadata harvester (`api/harvest/`, plai
 ## Workflow
 
 - Weekly Monday meeting with Fernanda. Each recording goes through the `~/dev/yeeko/written.django` transcription pipeline and lands in `docs/records/` as `<date>-reunion-…_raw.md` plus a cleaned copy (formatting noise and off-topic passages removed, nothing paraphrased).
-- The live list of questions for Fernanda is the task owned by `ricardo` in `docs/tasks/`; bring it to the meeting and tick answers there.
-- Meeting material is an accordion note in `docs/notes/` (dated; H2 blocks per theme; each point in bold with a one- or two-line explanation below), linked from the questions task for Fernanda.
-- Sessions run in duo mode: coordinator dialogues, executors do the volume.
 - Every document or asunto id cited to Ricardo carries the folder where he can open it (relative to `api/media/`), in the same paragraph as the case it illustrates.
 
 ## Never
@@ -40,4 +35,3 @@ No Django yet. What exists in code: the metadata harvester (`api/harvest/`, plai
 - Treat the protocol, guide or COVID base as requirements.
 - Record a methodological decision as an ADR before an exercise backs it.
 - Put personal data, transcripts or budgets anywhere outside `docs/`.
-- Cite ADR or task ids in this file or in README (stable files describe state, not the graph).

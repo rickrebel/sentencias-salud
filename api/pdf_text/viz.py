@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Visualizador de diagnóstico del limpiador: un PNG por página.
 
-    python3 -m pdf_text.viz --pdf <ruta> --out <dir> [--cleaner clean2]
+    python3 -m pdf_text.viz --pdf <ruta> --out <dir>
     python3 -m pdf_text.viz --batch <archivo> --out <dir> [--workers N]
     python3 -m pdf_text.viz --index-only --out <dir> [--title T --up URL]
     python3 -m pdf_text.viz --root-index --out <dir>
@@ -13,11 +13,11 @@ de `--other`, decide qué hay que mirar y con eso un `nivel_v2` (la regla
 está en RULE), lo guarda en el `summary.json` bajo `triage`, rehace el
 visor de páginas y los índices de los dos árboles y escribe el tsv del lote
 con el `nivel_v2` en la cuarta columna. A un `summary.json` previo a las
-señales por página le vuelve a correr `analyze()` de su limpiador.
+señales por página le vuelve a correr `analyze()` del limpiador (solo si
+lo produjo `clean2`; los árboles del limpiador retirado se quedan como están).
 
 Cada caja de poppler se contornea con el color de la etiqueta final que le
-da el `analyze()` del limpiador elegido con `--cleaner` (módulo de
-`pdf_text`, `clean` por omisión) —la misma secuencia que produce el .txt—,
+da `clean2.analyze()` —la misma secuencia que produce el .txt—,
 más el bbox de cada párrafo, el bbox de texto de la paridad de la página,
 las líneas de banda y de notas, la cola y la última «Doy fe». Las líneas
 repetidas no se dibujan. El archivo de `--batch` trae una ruta de PDF por
@@ -26,7 +26,6 @@ el índice del lote muestra.
 """
 import argparse
 import html
-import importlib
 import json
 import os
 import re
@@ -43,12 +42,12 @@ from PIL import Image, ImageDraw, ImageFont
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from pdf_text import clean as cl          # noqa: E402
-from pdf_text import tail as tl           # noqa: E402
+from pdf_text import clean2 as c2         # noqa: E402
 from pdf_text import verify as vf         # noqa: E402
-from pdf_text.bands import is_body_like   # noqa: E402
 
 DPI = 300
+# Va al summary.json: el triage no recalcula árboles de otro limpiador.
+CLEANER = 'clean2'
 BASE_DPI = 100          # los tamaños en px de abajo están dados a 100 ppp
 ALPHA = 170
 H_DEV = 0.10            # anota h si se aparta más que esto de la mediana
@@ -83,8 +82,6 @@ CLOSINGS = (('Doy fe', re.compile(r'\bdoy\s+fe\b', re.I)),
             ('da fe', re.compile(r'\bda\s+fe\b', re.I)))
 LIMIT_H_DEV = 0.10      # continuación a altura de cuerpo: |h−doc_h| ≤ esto
 LIMIT_Y_TOL = 2.0       # pt: dos páginas comparten fondo dentro de esto
-DROP_NAMES = {'watermark': 'marca de agua', 'pagenum': 'folio',
-              'repeated': 'repetido'}
 FLAG_LABELS = ('repetido', 'folio', 'rescatado', 'nota')
 TAIL_TINT = {'acuse': (255, 190, 0, 45),
              'certificación': (255, 90, 90, 40),
@@ -124,50 +121,14 @@ def font(size, bold=False):
 
 
 def label_lines(a):
-    """Etiqueta final de cada caja de poppler; anota la página de cola.
-
-    Si el limpiador ya trae `label` en cada línea (clean2), se dibuja esa;
-    si no, se deriva como lo decide `clean`.
-    """
-    if any('label' in l for p in a['pages'] for l in p['lines']):
-        return copy_labels(a)
+    """Etiqueta final de cada caja de poppler; anota la página de cola."""
     useful_n = {p['n'] for p in a['useful']}
     acuse = set(a['tail']['acuse_pages'])
     for p in a['pages']:
         if p['n'] not in useful_n:
             p['tail_kind'] = ('acuse' if p['n'] in acuse else
-                              'certificación' if tl.is_cert(p) else
-                              'arrastrada')
-            p['med_h'] = cl.median_height(p['lines'], a['doc_h'])
-            for l in p['lines']:
-                l['lab'] = 'cola'
-            continue
-        for l in p['lines']:
-            c = l['c']
-            if c != 'cuerpo':
-                l['lab'] = c
-                continue
-            drop = cl.body_drop(l, a['rep'])
-            if drop:
-                l['lab'] = DROP_NAMES[drop]
-            elif ((l['y1'] <= p['top_lim'] or l['y0'] >= p['bot_lim'])
-                  and is_body_like(l, p['med_h'])):
-                l['lab'] = 'rescatado'
-            else:
-                l['lab'] = 'cuerpo'
-
-
-def copy_labels(a):
-    useful = a.get('useful')
-    useful_n = {p['n'] for p in useful} if useful is not None else None
-    acuse = set((a.get('tail') or {}).get('acuse_pages') or ())
-    for p in a['pages']:
-        if useful_n is not None and p['n'] not in useful_n:
-            p['tail_kind'] = ('acuse' if p['n'] in acuse else
-                              'certificación' if tl.is_cert(p) else
-                              'arrastrada')
-        if p.get('med_h') is None:
-            p['med_h'] = cl.median_height(p['lines'], a['doc_h'])
+                              'certificación' if c2.page_kind(p) == 'cert'
+                              else 'arrastrada')
         for l in p['lines']:
             l['lab'] = l.get('label', 'cuerpo')
 
@@ -350,12 +311,15 @@ def attach_checks(pages_info, checks):
 
 def recheck(args):
     """Señales por página para un `summary.json` que no las trae: vuelve a
-    correr `analyze()` de su limpiador, sin rasterizar."""
+    correr `analyze()` del limpiador, sin rasterizar."""
     sj, = args
     sj = Path(sj)
     doc = json.loads(sj.read_text(encoding='utf-8'))
-    mod = importlib.import_module(f'pdf_text.{doc.get("cleaner") or "clean"}')
-    a = mod.analyze(Path(doc['source']))
+    if doc.get('cleaner') != CLEANER:
+        # Recalcular con otro limpiador mezclaría señales de dos secuencias.
+        raise ValueError(f'árbol de {doc.get("cleaner") or "clean"}, '
+                         'limpiador retirado')
+    a = c2.analyze(Path(doc['source']))
     paras, limits, _ = diagnose(a)
     attach_checks(doc['pages'], page_checks(a, limits, paras))
     doc['checks_version'] = CHECKS_VERSION
@@ -573,32 +537,29 @@ def save_atomic(img, path, **kw):
 
 
 def process(args):
-    pdf, out_root, group, note, dpi, cleaner, other = args
-    # Se importa aquí: con forkserver el worker no hereda los globales.
-    mod = importlib.import_module(f'pdf_text.{cleaner}')
+    pdf, out_root, group, note, dpi, other = args
     k = dpi / BASE_DPI
     pdf = Path(pdf)
     stem = pdf.stem
     out = Path(out_root) / stem
     (out / 'thumbs').mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
-    a = mod.analyze(pdf)
-    idx = (mod if hasattr(mod, 'build_index') else cl).build_index(a, stem)
+    a = c2.analyze(pdf)
+    idx = c2.build_index(a, stem)
     idx['text_ratio'] = vf.text_ratio(idx, pdf)
     idx['ratio_residual'] = vf.residual(idx)
     idx['status'] = vf.grade(idx)
     paras, limits, closings = diagnose(a)
     checks = page_checks(a, limits, paras)
-    fn_y = getattr(mod, 'FN_Y_BAND', None)
     for p in a['pages']:
-        p['fn_y'] = fn_y
+        p['fn_y'] = c2.FN_Y_MIN
     doc = {k: idx.get(k) for k in ('id', 'status', 'cleaner_version',
                                     'pages_pdf', 'pages_useful',
                                     'tail_first_page', 'tail_kind',
                                     'paragraphs', 'chars', 'text_ratio',
                                     'expected_ratio', 'ratio_residual')}
     doc.update(doc_h=a['doc_h'], source=str(pdf), group=group, note=note,
-               dpi=dpi, cleaner=cleaner, limits=limits,
+               dpi=dpi, cleaner=CLEANER, limits=limits,
                closings=[{k: c[k] for k in ('phrase', 'page', 'para')}
                          for c in closings])
     fonts = (font(round(10 * k)), font(round(13 * k)),
@@ -1243,8 +1204,6 @@ def main():
     ap.add_argument('--out', required=True)
     ap.add_argument('--workers', type=int, default=6)
     ap.add_argument('--dpi', type=int, default=DPI)
-    ap.add_argument('--cleaner', default='clean',
-                    help='módulo de pdf_text cuyo analyze() se dibuja')
     args = ap.parse_args()
     out = Path(args.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -1275,12 +1234,11 @@ def main():
             print(f'  ! {i}: no está en {out}')
         return 0
     if args.pdf:
-        doc = process((args.pdf, str(out), '', '', args.dpi, args.cleaner,
-                       other))
+        doc = process((args.pdf, str(out), '', '', args.dpi, other))
         print(f'{doc["id"]}: {len(doc["pages"])} páginas -> '
               f'{out / doc["id"] / "index.html"}')
         return 0
-    tasks = [(p, str(out), g, n, args.dpi, args.cleaner, other)
+    tasks = [(p, str(out), g, n, args.dpi, other)
              for p, g, n in read_batch(args.batch)]
     with ProcessPoolExecutor(max_workers=workers) as pool:
         docs = list(pool.map(safe_process, tasks, chunksize=1))

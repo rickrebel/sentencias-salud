@@ -21,8 +21,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, '..', '..', '..', '..'))
 TOKEN_PATH = os.path.join(REPO, 'api', 'harvest', 'token.txt')
 BASE = 'https://apisise.cjf.gob.mx/bss/'
-UA = ('sentencias-salud (Coordinacion de las Clinicas Juridicas - '
-      'Ibero CDMX; ricardo@yeeko.org)')
+UA = ('sentencias-salud (Centro Interdisciplinario para la '
+      'Ensenanza Clinica del Derecho, Ibero CDMX; ricardo@yeeko.org)')
 DEFAULT_SAMPLE = os.path.join(
     REPO, 'api', 'harvest', 'data', 'external', 'analysis-2026-09-08',
     'october_pdf_sample_proposal.csv')

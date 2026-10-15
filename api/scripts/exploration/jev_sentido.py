@@ -230,14 +230,15 @@ def cap(cands):
 
 def where_question(what, options):
     return {'type': 'choice',
-            'instructions': ask('¿Qué párrafo del texto (por su '
-                                'identificador, como P0142) ' + what + '?'),
+            'instructions': ask('¿Qué párrafo o nota al pie del texto (por '
+                                'su identificador, como P0142 o N0003) '
+                                + what + '?'),
             'criteria': {o: None for o in options}}
 
 
 def window_question(what, windows):
     return {'type': 'choice',
-            'instructions': ask('¿Qué tramo de párrafos del texto '
+            'instructions': ask('¿Qué tramo de párrafos o notas del texto '
                                 + what + '?'),
             'criteria': {w: None for w in windows}}
 
@@ -347,14 +348,17 @@ def run_doc(key, doc_id, cfg):
               encoding='utf-8') as fh:
         text = fh.read()
     paras = [(m.group(1), m.group(2)) for m in
-             re.finditer(r'^\[(P\d{4})\|p\d+\] ?(.*)$', text, re.M)]
+             re.finditer(r'^\[([PN]\d{4})\|p\d+\] ?(.*)$', text, re.M)]
     para_ids = [p for p, _ in paras]
-    fechas, exps = date_candidates(paras), exp_candidates(paras)
+    # Candidates from body paragraphs only: the dates and numbers that
+    # footnotes cite (DOF, tesis) are never this ruling's.
+    body = [x for x in paras if x[0][0] == 'P']
+    fechas, exps = date_candidates(body), exp_candidates(body)
     rec = {'id': doc_id, 'model': MODEL, 'provider': 'jev',
            'prompt_version': glm.PROMPT_VERSION,
            'questions_version': QUESTIONS_VERSION,
            'questions_sha': cfg['sha'],
-           'paragraphs': len(para_ids), 'chars': len(text),
+           'paragraphs': len(body), 'chars': len(text),
            'fecha_candidates': len(fechas), 'exp_candidates': len(exps)}
     if len(para_ids) < 2:
         # A choice needs options; GLM got an empty text here and said so.
@@ -467,8 +471,6 @@ def main():
     ap.add_argument('--ids', default='')
     ap.add_argument('--timeout', type=int, default=300)
     ap.add_argument('--retries', type=int, default=5)
-    ap.add_argument('--cost-cap', type=float, default=3.0,
-                    help='USD, cumulative over the out file')
     ap.add_argument('--print-questions', default='',
                     help='print the questions built for one id and exit')
     args = ap.parse_args()
@@ -507,9 +509,9 @@ def main():
         pending = pending[:args.limit]
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     print('model=%s questions=%s sha=%s total=%d done=%d pending=%d '
-          'workers=%d spent=$%.4f cap=$%.2f'
+          'workers=%d spent=$%.4f'
           % (MODEL, QUESTIONS_VERSION, cfg['sha'], len(docs), len(done),
-             len(pending), args.workers, spent, args.cost_cap), flush=True)
+             len(pending), args.workers, spent), flush=True)
 
     work = queue.Queue()
     for d in pending:
@@ -517,14 +519,10 @@ def main():
     lock = threading.Lock()
     out = open(args.out, 'a', encoding='utf-8')
     state = {'n': 0, 't0': time.time(), 'cost': spent, 'err': 0,
-             'skip': 0, 'capped': False}
+             'skip': 0}
 
     def worker():
         while True:
-            with lock:
-                if state['cost'] >= args.cost_cap:
-                    state['capped'] = True
-                    return
             try:
                 doc_id = work.get_nowait()
             except queue.Empty:
@@ -565,10 +563,9 @@ def main():
         t.join()
     out.close()
     el = time.time() - state['t0']
-    print('%s %d docs in %.1f s, errors %d, skipped %d, '
+    print('done %d docs in %.1f s, errors %d, skipped %d, '
           'cumulative cost $%.4f'
-          % ('STOPPED AT COST CAP:' if state['capped'] else 'done',
-             state['n'], el, state['err'], state['skip'], state['cost']),
+          % (state['n'], el, state['err'], state['skip'], state['cost']),
           flush=True)
     return 0
 

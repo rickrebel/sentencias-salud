@@ -2,7 +2,8 @@ import json, time, urllib.request, urllib.error, os
 
 TOKEN = open(os.path.expanduser('~/.cache/sise/token.txt')).read().strip()  # token efimero, fuera del repo; borrado al terminar
 URL = 'https://apisise.cjf.gob.mx/bss/por-sentencia/buscar/'
-UA = 'sentencias-salud (Coordinacion de las Clinicas Juridicas - Ibero CDMX; ricardo@yeeko.org)'
+UA = ('sentencias-salud (Centro Interdisciplinario para la '
+      'Ensenanza Clinica del Derecho, Ibero CDMX; ricardo@yeeko.org)')
 VENTANA = {"FechaInicio": "01-01-2011", "FechaFinal": "30-04-2026"}
 _last = [0.0]
 

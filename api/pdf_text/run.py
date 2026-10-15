@@ -3,8 +3,9 @@
 
     python3 -m pdf_text.run --in <dir-o-lista> --out <dir> [--workers N]
 
-Escribe <id>.txt y <id>.json por documento y un conversion_log.csv por
-corrida, fusionado con el que ya esté en el directorio de salida.
+Escribe <id>.txt, <id>.json y <id>.tail.txt por documento y un
+conversion_log.csv por corrida, fusionado con el que ya esté en el
+directorio de salida.
 """
 import argparse
 import csv
@@ -18,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from pdf_text import clean as cl          # noqa: E402
+from pdf_text import clean2 as c2         # noqa: E402
 from pdf_text import verify as vf         # noqa: E402
 
 LOG_NAME = 'conversion_log.csv'
@@ -88,12 +89,12 @@ def process_one(args):
         return row
     started = time.perf_counter()
     try:
-        idx = cl.clean(pdf, pdf.stem)
+        idx = c2.clean(pdf, pdf.stem)
         idx['source'] = str(pdf)
         idx['text_ratio'] = vf.text_ratio(idx, pdf)
         idx['ratio_residual'] = vf.residual(idx)
         idx['status'] = vf.grade(idx)
-        dst_txt.write_text(cl.render_txt(idx), encoding='utf-8')
+        dst_txt.write_text(c2.render_txt(idx), encoding='utf-8')
         tail = vf.tail_text(idx, pdf)
         if tail:
             dst_tail.write_text(tail, encoding='utf-8')

@@ -30,8 +30,8 @@ min(S,N)-2 and, when S < N, then from N-1 down to S+1.
 
 The server answers HTTP 200 for any name: application/pdf when the file
 exists, a ~582 byte text/html PNT notice when not. So each probe is a GET
-that reads the body only when it is a PDF, and the hit is the download
-(adr-0006); --head-probes spends a HEAD per candidate and a GET on the hit.
+that reads the body only when it is a PDF, and the hit is the download;
+--head-probes spends a HEAD per candidate and a GET on the hit.
 
 Politeness: concurrency 1, PAUSE after every request, project User-Agent.
 
@@ -85,8 +85,8 @@ RESOLVER = os.path.join(HERE, 'resolve_urls.mjs')
 # Learned per court by learn_probe_rules.py; absent, the era alone orders.
 PREFS_PATH = os.path.join(DATA, 'probe_prefs.json')
 
-UA = ('sentencias-salud (Coordinacion de las Clinicas Juridicas - '
-      'Ibero CDMX; ricardo@yeeko.org)')
+UA = ('sentencias-salud (Centro Interdisciplinario para la '
+      'Ensenanza Clinica del Derecho, Ibero CDMX; ricardo@yeeko.org)')
 SVP = 'https://sise.cjf.gob.mx/SVP/word1.aspx?arch=%s&sec=x&svp=1'
 PAUSE = 1.0
 RETRY_WAITS = (5, 20, 60)

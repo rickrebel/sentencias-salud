@@ -29,8 +29,8 @@ DEFAULT_SAMPLE = os.path.join(
     EXTERNAL, 'analysis-2026-09-08', 'october_pdf_sample_proposal.csv')
 DEFAULT_OUTDIR = os.path.join(EXTERNAL, 'october-pdfs-2026-09-08')
 METADATA = os.path.join(REPO, 'api', 'harvest', 'data', 'metadata')
-UA = ('sentencias-salud (Coordinacion de las Clinicas Juridicas - '
-      'Ibero CDMX; ricardo@yeeko.org)')
+UA = ('sentencias-salud (Centro Interdisciplinario para la '
+      'Ensenanza Clinica del Derecho, Ibero CDMX; ricardo@yeeko.org)')
 MONTHS = ['2025-10.jsonl', '2025-11.jsonl', '2025-12.jsonl']
 
 

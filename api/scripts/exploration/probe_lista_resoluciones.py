@@ -31,8 +31,8 @@ OUT_DIR = os.path.join(REPO, 'api', 'harvest', 'data', 'exploration')
 OUT = os.path.join(OUT_DIR, '2026-09-22-lista-resoluciones.jsonl')
 PICK = os.path.join(OUT_DIR, '2026-09-22-lista-resoluciones-pick.json')
 BASE = 'https://apisise.cjf.gob.mx/bss/'
-UA = ('sentencias-salud (Coordinacion de las Clinicas Juridicas - '
-      'Ibero CDMX; ricardo@yeeko.org)')
+UA = ('sentencias-salud (Centro Interdisciplinario para la '
+      'Ensenanza Clinica del Derecho, Ibero CDMX; ricardo@yeeko.org)')
 PAUSE = 1.0
 _last = [0.0]
 

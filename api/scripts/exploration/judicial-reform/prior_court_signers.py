@@ -29,8 +29,8 @@ OUTDIR = os.path.join(EXTERNAL, 'october-pdfs-2026-09-08')
 SAMPLE = os.path.join(EXTERNAL, 'analysis-2026-09-08',
                       'october_pdf_sample_proposal.csv')
 METADATA = os.path.join(REPO, 'api', 'harvest', 'data', 'metadata')
-UA = ('sentencias-salud (Coordinacion de las Clinicas Juridicas - '
-      'Ibero CDMX; ricardo@yeeko.org)')
+UA = ('sentencias-salud (Centro Interdisciplinario para la '
+      'Ensenanza Clinica del Derecho, Ibero CDMX; ricardo@yeeko.org)')
 SIGNER_RE = re.compile(
     r'FIRMANTE Nombre:\s*(.+?)\s+Validez:.*?Fecha\s+\d{2}/\d{2}/\d{2} '
     r'\d{2}:\d{2}:\d{2} - (\d{2}/\d{2}/\d{2})')

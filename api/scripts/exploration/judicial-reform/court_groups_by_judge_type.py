@@ -227,7 +227,7 @@ def main():
     prev_any_keys = set(prev_any)
 
     # Denominador hermanos: maximo folio del anio entre juzgados del mismo
-    # circuito y especialidad (task-15), sobre todos los juzgados vistos.
+    # circuito y especialidad, sobre todos los juzgados vistos.
     herm = defaultdict(int)
     herm_n = defaultdict(set)
     for org, years in fmax.items():

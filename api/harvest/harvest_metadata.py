@@ -24,8 +24,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SEARCH_URL = 'https://apisise.cjf.gob.mx/bss/por-sentencia/buscar/'
 CATALOG_URL = 'https://apisise.cjf.gob.mx/bss/por-sentencia/catalogos/'
 TIPO_ASUNTO = 'Amparo Indirecto'
-USER_AGENT = ('sentencias-salud (Coordinación de las Clínicas Jurídicas '
-              '- Ibero CDMX; ricardo@yeeko.org)')
+USER_AGENT = ('sentencias-salud (Centro Interdisciplinario para la '
+              'Enseñanza Clínica del Derecho, Ibero CDMX; '
+              'ricardo@yeeko.org)')
 
 # The API refuses any offset >= 50,000, so every date chunk must stay
 # below it; a month of Amparo Indirecto averages ~23k.
@@ -948,9 +949,10 @@ def main():
     parser.add_argument('--schedule',
                         help='ventana horaria local, p. ej. 23:00-06:45')
     parser.add_argument('--partition', choices=['month', 'day'],
-                        default='month',
-                        help='month: pagina el mes y pierde ~3%% de las '
-                             'filas; day: una página por día (completo)')
+                        default='day',
+                        help='day (por omisión): una página por día '
+                             '(completo); month: pagina el mes y pierde '
+                             '~3%% de las filas')
     parser.add_argument('--size', type=int)
     parser.add_argument('--token',
                         default=os.path.join(BASE_DIR, 'token.txt'))

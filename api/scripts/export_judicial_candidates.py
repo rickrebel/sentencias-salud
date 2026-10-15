@@ -162,7 +162,7 @@ ROMAN = [
 
 
 def to_roman(number):
-    """Circuits are cited in roman numerals in rulings and in the CJF."""
+    """Circuits are cited in roman numerals in rulings and in the OAJ."""
     if not number:
         return ""
     out = ""

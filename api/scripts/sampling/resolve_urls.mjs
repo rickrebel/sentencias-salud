@@ -29,8 +29,8 @@ const PAGE = 'https://ejusticia.cjf.gob.mx/BuscadorSISE/';
 const PAUSE_MS = 1500;
 // Same string as UA in download_sample.py: the source sees one identifiable
 // client whether the request comes from Python or from the browser.
-const UA = 'sentencias-salud (Coordinacion de las Clinicas Juridicas - '
-  + 'Ibero CDMX; ricardo@yeeko.org)';
+const UA = 'sentencias-salud (Centro Interdisciplinario para la '
+  + 'Ensenanza Clinica del Derecho, Ibero CDMX; ricardo@yeeko.org)';
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(name);

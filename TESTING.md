@@ -3,7 +3,7 @@
 Un solo nivel montado: **pytest sin red**. Las peticiones se simulan con dobles de la biblioteca estándar (una sesión falsa que sustituye a `requests.Session`), así que las pruebas no abren ningún socket ni escriben en `api/harvest/data/` ni en `api/media/`. No hay configuración de pytest ni credenciales: cada carpeta `tests/` se basta a sí misma y la suite completa corre desde `api/`:
 
 ```bash
-cd api && python3 -m pytest harvest/tests pdf_text/tests scripts/sampling/tests -q     # 38 pruebas
+cd api && python3 -m pytest harvest/tests pdf_text/tests scripts/sampling/tests -q     # 33 pruebas
 ```
 
 ## Cosechador (`api/harvest/tests/`)
@@ -33,19 +33,14 @@ cd api/harvest && python3 -m pytest tests/ -q     # 16 pruebas
 
 ## Limpiador de PDF (`api/pdf_text/tests/`)
 
-`clean2.py` y `clean2_geo.py` (limpiador nuevo, 5 de octubre de 2026) y `viz.py` (visualizador) no tienen pruebas todavía: las listas propuestas viven en las tasks del grafo que construyen cada uno (`docs/tasks/`), y se escriben cuando Ricardo las fije.
+`tests/test_clean.py` cubre `clean2.py` con una prueba que escribe un PDF pequeño en el directorio temporal de pytest con `tests/pdf_writer.py` (Helvetica, sin datos personales ni binarios en el repo) y necesita `pdftotext` de poppler, sin el cual se salta. Muerde con `clean2` (comprobado revirtiendo la regla de `verify.grade`):
 
-`tests/test_clean.py` cubre las reglas del limpiador que protegen al cuerpo y el corte de la cola. Las pruebas 1 a 4 trabajan sobre geometría sintética —los mismos diccionarios que `read_lines` arma con el XML de `pdftotext -bbox-layout`—; las 5 y 6 escriben PDF pequeños en el directorio temporal de pytest con `tests/pdf_writer.py` (Helvetica, sin datos personales ni binarios en el repo) y necesitan `pdftotext` de poppler, sin el cual se saltan. Cada prueba falla si se revierte la regla que protege:
+- Un documento cuyos renglones son todos encabezado o folio deja 0 caracteres limpios con residuo 0, y su estado no puede ser `ok` (sale `empty`).
 
-- Sin encabezado, la primera línea de cuerpo arriba de 0.09 del alto de página se queda como cuerpo; con las bandas fijas de agosto desaparecía.
-- Un encabezado de dos renglones en las páginas nones sale etiquetado `encabezado` renglón por renglón, aunque el segundo baje más que la primera línea de cuerpo de las pares, y el número de expediente no se cuela como párrafo.
-- Un folio de número cambiante («Hoja 9», «Hoja 10») se reconoce por su forma y acota el pie desde su punto más alto.
-- La red de última instancia: una línea de altura de cuerpo que empieza en minúscula y cuya forma se repite arriba de varias páginas sigue siendo cuerpo.
-- Un documento cuyos renglones son todos encabezado o folio deja 0 caracteres limpios con residuo 0, y su estado no puede ser `ok` (sale `empty`); antes el residuo solo bastaba para aprobarlo.
-- La cola corta por lo que venga antes: acuse seguido de certificación corta en el acuse (`tail_kind='acuse'`), la certificación sola corta ahí, y una página de cuerpo de más de 800 caracteres con «hago constar y certifico» y «versión pública» no corta.
+El resto de `clean2.py`, `clean2_geo.py` y `viz.py` (visualizador) no tiene pruebas todavía: las listas propuestas viven en las tasks del grafo que construyen cada uno (`docs/tasks/`), y se escriben cuando Ricardo las fije.
 
 ```bash
-cd api && python3 -m pytest pdf_text/tests -q     # 6 pruebas
+cd api && python3 -m pytest pdf_text/tests -q     # 1 prueba
 ```
 
 ## Muestra y descarga determinista (`api/scripts/sampling/tests/`)

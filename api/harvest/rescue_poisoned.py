@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Pasada de rescate de las rebanadas envenenadas y fallidas (task-20).
+"""Pasada de rescate de las rebanadas envenenadas y fallidas.
 
 Una rebanada envenenada devuelve 500 con cuerpo `text/html` siempre, a
 cualquier tamaño útil: hay un asunto que el backend no serializa y tumba
 toda consulta que lo incluya. Esta pasada la acorrala **por listas de
-valores, nunca por posición**: una petición con lista de N valores
+valores hasta el órgano culpable**: una petición con lista de N valores
 devuelve la unión exacta de las N individuales y un bloque definido por
 valores es estable entre llamadas, cosa que «el primer tercio» no es.
 

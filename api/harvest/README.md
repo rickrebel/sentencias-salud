@@ -6,8 +6,8 @@ Proceso externo, sin Django, que recorre el índice del BuscadorSISE y guarda **
 
 Hay dos modos y **no dan el mismo resultado**.
 
-- `--partition day` (**el recomendado**): una petición por día; si un día no cabe en una página, se parte por circuito y, si hace falta, por tipo, especialidad y nombre oficial de órgano. Cada rebanada cabe entera en una sola respuesta, así que no hay frontera de paginación y **no se pierde ni se duplica nada**.
-- `--partition month` (el que viene por omisión): pagina el mes con páginas de 1000. Es lo que se planeó al principio, pero la medición del 25 de agosto lo desaconseja: la API corta el resultado crudo en `size` y luego vuelve a expandir cada asunto, de modo que dos páginas consecutivas ni se solapan ni empalman. En marzo de 2019 devolvió 31,112 filas con 920 duplicados exactos y **30,192 filas únicas frente a 31,036 hits declarados: 2.9 % perdido**. El modo `day` sobre el mismo mes devolvió 31,110 filas únicas, cero duplicados, y contiene todas las del modo `month` más 918 que este nunca vio. El costo en tiempo es el mismo (196 s contra 202 s para ese mes).
+- `--partition day` (**el recomendado y el que viene por omisión**): una petición por día; si un día no cabe en una página, se parte por circuito y, si hace falta, por tipo, especialidad y nombre oficial de órgano. Cada rebanada cabe entera en una sola respuesta, así que no hay frontera de paginación y **no se pierde ni se duplica nada**.
+- `--partition month`: pagina el mes con páginas de 1000. Es lo que se planeó al principio, pero la medición del 25 de agosto lo desaconseja: la API corta el resultado crudo en `size` y luego vuelve a expandir cada asunto, de modo que dos páginas consecutivas ni se solapan ni empalman. En marzo de 2019 devolvió 31,112 filas con 920 duplicados exactos y **30,192 filas únicas frente a 31,036 hits declarados: 2.9 % perdido**. El modo `day` sobre el mismo mes devolvió 31,110 filas únicas, cero duplicados, y contiene todas las del modo `month` más 918 que este nunca vio. El costo en tiempo es el mismo (196 s contra 202 s para ese mes).
 
 ## Token
 
@@ -26,10 +26,10 @@ Un token de 8 horas no cubre dos noches, y el proceso sí sobrevive al día: por
 ## Lanzar
 
 ```bash
-PARTITION=day api/harvest/run_tonight.sh
+api/harvest/run_tonight.sh
 ```
 
-Lanza con `nohup`, deja el PID en un archivo `harvest.pid` junto al script e imprime los comandos de consulta y de paro. Variables de entorno que acepta: `PARTITION` (day o month), `SCHEDULE` (por omisión `23:00-06:45`), `START` y `END`.
+Lanza con `nohup`, deja el PID en un archivo `harvest.pid` junto al script e imprime los comandos de consulta y de paro. Variables de entorno que acepta: `PARTITION` (day o month; por omisión `day`), `SCHEDULE` (por omisión `23:00-06:45`), `START` y `END`.
 
 La ventana horaria significa que el proceso se puede lanzar a las 22:00 y se queda dormido, revisando cada 5 minutos, hasta las 23:00; a las 06:45 pausa el mes en curso y espera a la noche siguiente. Si lo dejas vivo, sigue solo; si lo matas, relanzarlo retoma donde iba.
 
@@ -69,7 +69,7 @@ Lo que quedó sin cosechar son 11,613 rebanadas menos 11,308 completas: **233 en
 
 ## Pasada de rescate
 
-`rescue_poisoned.py` recupera las rebanadas `poisoned` y `failed` acorralándolas **por listas de valores, nunca por posición**: tercios de la lista de 32 estados, luego tercios del catálogo de órganos dentro del estado culpable, y por último páginas de `size=1` dentro del órgano culpable. Tercios y no mitades porque con varios culpables posibles el costo por culpable es (k/ln k)·ln n, mínimo entero en k = 3.
+`rescue_poisoned.py` recupera las rebanadas `poisoned` y `failed` acorralándolas **por listas de valores hasta el órgano culpable**: tercios de la lista de 32 estados, luego tercios del catálogo de órganos dentro del estado culpable. Dentro del órgano culpable recorre hoja por hoja páginas de `size=1`, único punto donde se pagina, porque una fila envenenada solo se aísla así. Tercios y no mitades porque con varios culpables posibles el costo por culpable es (k/ln k)·ln n, mínimo entero en k = 3.
 
 ```bash
 python3 api/harvest/rescue_poisoned.py --days 30-05-2014 --dry-run   # una rebanada, sin escribir
@@ -123,13 +123,13 @@ Una hoja reabierta se vuelve a correr **entera**, no desde donde se quedó. Las 
 
 `--status` cierra con dos cifras:
 
-- **filas perdidas contabilizadas** (`rows_missing`): la diferencia entre los hits que declaraba una rebanada y las filas que de verdad se escribieron. Se cobra al nivel más bajo que la conoce —la hoja paginada— y cada padre solo carga con lo que sus hijos no reportaron ya, así que nada se cuenta dos veces. Es una **cota inferior**: `total_hits` cuenta asuntos y las filas son sentencias, de modo que una rebanada sana suele escribir más filas que hits.
+- **filas perdidas contabilizadas** (`rows_missing`): la diferencia entre los hits que declaraba una rebanada y las filas que de verdad se escribieron. Se cobra al nivel más bajo que la conoce —la hoja paginada— y cada padre solo carga con lo que sus hijos no reportaron ya, así que nada se cuenta dos veces. `total_hits` cuenta filas (resoluciones), no asuntos, así que la diferencia se mide en filas; una rebanada que escribe más filas que hits declarados aporta cero, no un saldo negativo.
 - **rebanadas envenenadas** (`poisoned`): cuántas rebanadas devolvieron 500 + `text/html` y con cuántos hits declarados, que es el tamaño de lo que la pasada de rescate tiene por delante. Sus hits se cargan como pérdida a sus padres, así que la cifra anterior ya los incluye.
 - **filas envenenadas aisladas** (`isolated_bad`): herencia de la escalera de páginas retirada el 26 de agosto; cuenta las páginas de tamaño 1 que seguían devolviendo 500 en los meses cosechados antes de ese día. La cosecha nueva no la incrementa.
 
 ## Qué hacer después con los datos
 
-Las filas son de sentencia, no de asunto: un mismo expediente genera varias. La llave para deduplicar es la terna **(`AsuntoNeunId`, `SintesisOrden`, `NumeroOrden`)**. En modo `day` no debería haber duplicados dentro de un mes, pero conviene deduplicar de todos modos al consolidar, porque las rebanadas partidas por circuito pueden traslaparse si un asunto cambia de órgano.
+Las filas son de resolución, no de asunto: un mismo expediente genera varias. La llave para deduplicar es la terna **(`AsuntoNeunId`, `SintesisOrden`, `NumeroOrden`)**. En modo `day` no debería haber duplicados dentro de un mes, pero conviene deduplicar de todos modos al consolidar, porque las rebanadas partidas por circuito pueden traslaparse si un asunto cambia de órgano.
 
 ```bash
 cat api/harvest/data/metadata/*.jsonl | python3 -c "
@@ -144,4 +144,4 @@ for line in sys.stdin:
 " > todo-dedupe.jsonl
 ```
 
-El campo `AsuntoNeunId` es además la llave para bajar después el PDF, por una cadena de tres saltos: (1) la búsqueda entrega el `AsuntoNeunId` y los campos de orden (`SintesisOrden`, `NumeroOrden`); (2) el `idOrgano`, que no viene en la búsqueda ni en la ficha por expediente, se aprende una vez por órgano de cualquier URL ya resuelta (los primeros cuatro dígitos de `arch=`); (3) con ambos se arma el nombre del documento en `sise.cjf.gob.mx/SVP/word1.aspx?arch=…&sec=…&svp=1`, que responde `application/pdf` **sin autenticación** e ignora la extensión, con dos patrones de nombre (moderno `<idOrgano><NEUN><SintesisOrden:3>`, antiguo `<idOrgano><NEUN><SintesisOrden:4><NumeroOrden:3>`). El detalle completo —patrones de nombre, mapa parcial de `idOrgano` y los desenlaces cuando el archivo no existe— está en la referencia `fuente-buscadorsise` (`[[fuente-buscadorsise]]`, en `docs/`, que es un submódulo privado: si no tienes acceso, esta descripción es todo lo que hace falta para reconstruir la cadena).
+El campo `AsuntoNeunId` es además la llave para bajar después el PDF, por una cadena de tres saltos: (1) la búsqueda entrega el `AsuntoNeunId` y los campos de orden (`SintesisOrden`, `NumeroOrden`); (2) el `idOrgano`, que no viene en la búsqueda ni en la ficha por expediente, se aprende una vez por órgano de cualquier URL ya resuelta (los primeros cuatro dígitos de `arch=`); (3) con ambos se arma el nombre del documento en `sise.cjf.gob.mx/SVP/word1.aspx?arch=…&sec=…&svp=1`, que responde `application/pdf` **sin autenticación** e ignora la extensión, con dos patrones de nombre (moderno `<idOrgano><NEUN><SintesisOrden:3>`, antiguo `<idOrgano><NEUN><SintesisOrden:4><NumeroOrden:3>`). El detalle completo —patrones de nombre, mapa parcial de `idOrgano` y los desenlaces cuando el archivo no existe— está en la referencia sobre la fuente en `docs/` (submódulo privado: si no tienes acceso, esta descripción es todo lo que hace falta para reconstruir la cadena).

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Limpiador v2: PDF de BuscadorSISE a párrafos citables, en otro orden.
+"""Limpiador (v2): PDF de BuscadorSISE a párrafos y notas citables.
 
 Implementa el diseño del 5 de octubre de 2026 (referencia
 `2026-10-05-diseno-del-limpiador-v2`), punto por punto:
@@ -15,20 +15,21 @@ Implementa el diseño del 5 de octubre de 2026 (referencia
  8. notas al pie por número volado, raya de Word y umbral de altura;
  9. párrafos con sangría aprendida y títulos grandes;
 10. reajuste por cuadrante como red final;
+11. página 1 con regla propia, fuera de los límites por paridad
+    (pendiente: diseño marcado como abierto);
 12. repetidos solo sobre líneas visuales; testado siempre conservado;
 13. «Doy fe» como señal, no como corte.
 
-Mismo contrato que `clean.py` (`analyze`, `build_index`, `clean`,
-`render_txt`), para que el visualizador y `run.py` puedan cambiar de
-limpiador.
+`analyze` devuelve las decisiones sin armar el índice, para que el
+visualizador dibuje exactamente la secuencia que produce el .txt;
+`clean` = `build_index(analyze(...))` y `render_txt` dan los artefactos.
 """
 import re
 from collections import Counter
 
 from pdf_text import clean2_geo as geo
-from pdf_text.clean import join_lines, pdf_to_bbox_xml, split_long
 
-CLEANER_VERSION = '2026-10-05.1'
+CLEANER_VERSION = '2026-10-14.1'
 METHOD = 'pdftotext -bbox-layout + pdfplumber (fuente) + geometría'
 
 DOUBTS = (
@@ -104,7 +105,6 @@ REDACTION_TOKEN = '[TESTADO]'
 
 # --- notas (punto 8) ------------------------------------------------------
 FN_Y_MIN = 0.50
-FN_Y_BAND = FN_Y_MIN         # nombre que el visualizador lee de clean.py
 FN_SMALL = 0.95              # nota: tamaño < esto × cuerpo
 SEP_LEFT_TOL = 12.0
 SEP_BELOW_FACTOR = 1.5
@@ -113,6 +113,7 @@ RE_CALL_WORD = re.compile(r'^\d{1,3}$')
 
 # --- párrafos (punto 9) ---------------------------------------------------
 GAP_FACTOR = 1.6
+MAX_PARAGRAPH = 1200         # corte de respaldo por longitud
 INDENT_TOL = 8.0
 INDENT_MIN = 8.0
 INDENT_MAX = 60.0            # 2.1 cm: lo medido va de 1 a 1.5 cm
@@ -211,7 +212,7 @@ def strict_acuse(page):
 # 1, 2, 5. Lectura, exclusión por estilo y líneas visuales
 # =========================================================================
 def read_pages(pdf_path):
-    pages = geo.read_boxes(pdf_to_bbox_xml(pdf_path))
+    pages = geo.read_boxes(geo.pdf_to_bbox_xml(pdf_path))
     geo.attach_fonts(pdf_path, pages)
     for p in pages:
         p['parity'] = 'odd' if p['n'] % 2 else 'even'
@@ -873,6 +874,47 @@ def paragraphs(pages, body, body_h):
     return paras, indent
 
 
+def join_lines(lines):
+    out = ''
+    for t in lines:
+        if not out:
+            out = t
+        elif out.endswith('-') and t[:1].islower():
+            out = out[:-1] + t        # guionado (no observado, defensivo)
+        else:
+            out += ' ' + t
+    return re.sub(r'\s+', ' ', out).strip()
+
+
+def split_long(pa):
+    """Parte por oración los párrafos sin señal tipográfica.
+
+    Las transcripciones literales (la demanda, la sentencia recurrida) van
+    justificadas sin sangría ni interlínea extra: geométricamente son un solo
+    párrafo de hasta 136 000 caracteres, inservible como unidad de cita. El
+    corte por oración es aproximado a propósito: no inventa un límite que el
+    documento no tiene, solo acota la unidad citable.
+    """
+    t = pa['text']
+    if len(t) <= MAX_PARAGRAPH:
+        return [pa]
+    pieces, cur = [], ''
+    for frag in re.split(r'(?<=[.;:])\s+(?=[«"“(¿¡A-ZÁÉÍÓÚÑ0-9])', t):
+        cur = (cur + ' ' + frag).strip() if cur else frag
+        if len(cur) >= MAX_PARAGRAPH:
+            pieces.append(cur)
+            cur = ''
+    if cur:
+        pieces.append(cur)
+    out = []
+    for i, p in enumerate(pieces):
+        q = dict(pa)
+        q['text'] = p
+        q['split'] = f'{i + 1}/{len(pieces)}'
+        out.append(q)
+    return out
+
+
 def make_para(lines):
     first = lines[0]
     return {'page': first['p'],
@@ -1025,7 +1067,7 @@ def apply_redactions(text):
 
 
 def build_index(a: dict, stem: str) -> dict:
-    """Índice completo, mismas llaves que `clean.build_index` y algunas más."""
+    """Índice completo del documento, listo para el .json."""
     useful, tail, ps = a['useful'], a['tail'], a['paragraphs']
     for i, p in enumerate(ps, 1):
         p['id'] = f'P{i:04d}'
@@ -1033,10 +1075,15 @@ def build_index(a: dict, stem: str) -> dict:
         p['redactions'] = len(lengths)
         p['redaction_lengths'] = lengths
     notes = []
-    for n in a['notes']:
+    ordered = sorted(a['notes'],
+                     key=lambda n: (n['page'], n['lines'][0]['y0']))
+    for i, n in enumerate(ordered, 1):
         text, lengths = apply_redactions(
             join_lines([l['t'] for l in n['lines']]))
-        notes.append({'page': n['page'], 'num': n['num'], 'text': text,
+        para = make_para(n['lines'])
+        notes.append({'id': f'N{i:04d}', 'page': n['page'],
+                      'bbox': para['bbox'], 'lines': para['lines'],
+                      'num': n['num'], 'text': text,
                       'redactions': len(lengths),
                       'redaction_lengths': lengths})
     labels = Counter(l['label'] for p in useful for l in p['lines'])
@@ -1096,6 +1143,15 @@ def clean(pdf_path, stem: str) -> dict:
     return build_index(analyze(pdf_path), stem)
 
 
+NOTES_HEADER = '=== NOTAS AL PIE ===\n\n'
+
+
 def render_txt(idx: dict) -> str:
-    return ''.join(f"[{p['id']}|p{p['page']}] {p['text']}\n\n"
-                   for p in idx['index'])
+    # Notes go last, under their own N ids, so P numbering never shifts.
+    out = ''.join(f"[{p['id']}|p{p['page']}] {p['text']}\n\n"
+                  for p in idx['index'])
+    notes = idx.get('footnotes') or []
+    if notes:
+        out += NOTES_HEADER + ''.join(
+            f"[{n['id']}|p{n['page']}] {n['text']}\n\n" for n in notes)
+    return out

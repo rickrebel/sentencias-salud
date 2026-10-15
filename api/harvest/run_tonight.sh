@@ -7,7 +7,7 @@ PIDFILE="$HERE/harvest.pid"
 SCHEDULE="${SCHEDULE:-23:00-06:45}"
 START="${START:-2011-01}"
 END="${END:-2026-04}"
-PARTITION="${PARTITION:-month}"
+PARTITION="${PARTITION:-day}"
 
 if [[ "$PARTITION" == "month" ]]; then
   echo "AVISO: partición 'month' pagina y pierde ~3% de las filas." >&2
