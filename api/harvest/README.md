@@ -6,8 +6,8 @@ Proceso externo, sin Django, que recorre el índice del BuscadorSISE y guarda **
 
 Hay dos modos y **no dan el mismo resultado**.
 
-- `--partition day` (**el recomendado**): una petición por día; si un día no cabe en una página, se parte por circuito y, si hace falta, por tipo, especialidad y nombre oficial de órgano. Cada rebanada cabe entera en una sola respuesta, así que no hay frontera de paginación y **no se pierde ni se duplica nada**.
-- `--partition month` (el que viene por omisión): pagina el mes con páginas de 1000. Es lo que se planeó al principio, pero la medición del 25 de agosto lo desaconseja: la API corta el resultado crudo en `size` y luego vuelve a expandir cada asunto, de modo que dos páginas consecutivas ni se solapan ni empalman. En marzo de 2019 devolvió 31,112 filas con 920 duplicados exactos y **30,192 filas únicas frente a 31,036 hits declarados: 2.9 % perdido**. El modo `day` sobre el mismo mes devolvió 31,110 filas únicas, cero duplicados, y contiene todas las del modo `month` más 918 que este nunca vio. El costo en tiempo es el mismo (196 s contra 202 s para ese mes).
+- `--partition day` (**el recomendado y el que viene por omisión**): una petición por día; si un día no cabe en una página, se parte por circuito y, si hace falta, por tipo, especialidad y nombre oficial de órgano. Cada rebanada cabe entera en una sola respuesta, así que no hay frontera de paginación y **no se pierde ni se duplica nada**.
+- `--partition month`: pagina el mes con páginas de 1000. Es lo que se planeó al principio, pero la medición del 25 de agosto lo desaconseja: la API corta el resultado crudo en `size` y luego vuelve a expandir cada asunto, de modo que dos páginas consecutivas ni se solapan ni empalman. En marzo de 2019 devolvió 31,112 filas con 920 duplicados exactos y **30,192 filas únicas frente a 31,036 hits declarados: 2.9 % perdido**. El modo `day` sobre el mismo mes devolvió 31,110 filas únicas, cero duplicados, y contiene todas las del modo `month` más 918 que este nunca vio. El costo en tiempo es el mismo (196 s contra 202 s para ese mes).
 
 ## Token
 
@@ -26,10 +26,10 @@ Un token de 8 horas no cubre dos noches, y el proceso sí sobrevive al día: por
 ## Lanzar
 
 ```bash
-PARTITION=day api/harvest/run_tonight.sh
+api/harvest/run_tonight.sh
 ```
 
-Lanza con `nohup`, deja el PID en `api/harvest/harvest.pid` e imprime los comandos de consulta y de paro. Variables de entorno que acepta: `PARTITION` (day o month), `SCHEDULE` (por omisión `23:00-06:45`), `START` y `END`.
+Lanza con `nohup`, deja el PID en un archivo `harvest.pid` junto al script e imprime los comandos de consulta y de paro. Variables de entorno que acepta: `PARTITION` (day o month; por omisión `day`), `SCHEDULE` (por omisión `23:00-06:45`), `START` y `END`.
 
 La ventana horaria significa que el proceso se puede lanzar a las 22:00 y se queda dormido, revisando cada 5 minutos, hasta las 23:00; a las 06:45 pausa el mes en curso y espera a la noche siguiente. Si lo dejas vivo, sigue solo; si lo matas, relanzarlo retoma donde iba.
 
@@ -55,15 +55,38 @@ kill -TERM $(cat api/harvest/harvest.pid)            # termina la página en cur
 - `api/harvest/data/metadata/state.json` — estado por mes: `status`, `total_hits`, rebanadas con su rango de fechas y filtros, filas, bytes escritos y segundos acumulados. Las rebanadas que se partieron dejan además un registro en `parents` con sus hits declarados y las filas que sumaron sus hijos.
 - `api/harvest/logs/harvest.log` — rotativa, 10 MB × 5, una línea por petición.
 
-La reanudación se apoya en el contador de bytes: si el proceso muere a media escritura, al relanzar se trunca el archivo del mes hasta el último límite bueno y se sigue desde ahí. Nunca quedan líneas partidas.
+La reanudación **de la cosecha principal** se apoya en el contador de bytes: si el proceso muere a media escritura, al relanzar se trunca el archivo del mes hasta el último límite bueno y se sigue desde ahí. Nunca quedan líneas partidas.
 
-## Duración esperada
-
-Lo que queda son **147 meses** (2014-01 a 2026-04), unos 4,500 días más las peticiones de las rebanadas partidas. El ritmo medido la noche del 25 al 26 de agosto fue de **~26 meses por hora** sobre meses limpios, pero se desplomaba unas **30 veces** cuando la cosecha entraba en una tormenta de 500: cada rebanada envenenada pagaba tres reintentos con backoff, un diferimiento y luego decenas de peticiones de partición. Saltarlas de inmediato es justamente lo que quita ese costo, así que la estimación razonable es de **entre 6 y 10 horas**: cerca del extremo bajo si el ritmo limpio se sostiene, cerca del alto si quedan cuelgues de gateway, que siguen costando reintentos. Son una o dos noches con la ventana 23:00–06:45. En modo `month` el orden de magnitud es el mismo, pero el resultado es incompleto.
+La pasada de rescate **no da esa garantía**: añade al `.jsonl` sin frontera de bytes y guarda el estado después de escribir, así que una muerte a media escritura puede dejar una línea partida que nadie limpia. Y un `SIGTERM` pierde la rebanada en curso entera —hasta unos 90 s de trabajo—, porque las filas de una rebanada solo se escriben cuando termina de acorralarla.
 
 ## Lo que ya está cosechado
 
-Al 26 de agosto de 2026 por la mañana hay **37 meses terminados y 614,299 filas** en `data/metadata/`, todos en modo `day`: la corrida seguida de 2011-01 a 2013-12 más 2019-03, que fue el mes de prueba. 2014-01 quedó a medias (`pending`) y se retoma solo. Los meses terminados se saltan al relanzar. El `state.json` recuerda la partición con la que se cosechó el directorio y **rechaza** ejecutar la otra sobre él, para que no se mezclen meses completos con meses paginados.
+La cosecha principal **terminó el 7 de septiembre de 2026**: los **184 meses** de 2011-01 a 2026-04 están en `done`, con **4,170,387 filas al cierre de la cosecha principal**, todos en modo `day`. Con lo que añadió la pasada de rescate, hoy hay **4,317,334 filas** en `data/metadata/`. Los meses terminados se saltan al relanzar. El `state.json` recuerda la partición con la que se cosechó el directorio y **rechaza** ejecutar la otra sobre él, para que no se mezclen meses completos con meses paginados.
+
+Los archivos arrastran **652 líneas duplicadas por la terna** `(AsuntoNeunId, SintesisOrden, NumeroOrden)` —489 en 2014-01 y 47 en 2014-05, el resto disperso—, heredadas del código viejo que paginaba y reintentaba, no de la pasada de rescate. No se limpian en los archivos: **la deduplicación va en la carga**, que es donde la terna funciona como clave.
+
+Lo que quedó sin cosechar son 11,613 rebanadas menos 11,308 completas: **233 envenenadas** (todas de 2014; 207 días enteros y 26 hojas ya partidas de 2014-01), **30 fallidas** (2011 y 2013-10..12) y **42 parciales**. Las dos primeras clases las recupera la pasada de rescate; las parciales se quedan como están.
+
+## Pasada de rescate
+
+`rescue_poisoned.py` recupera las rebanadas `poisoned` y `failed` acorralándolas **por listas de valores hasta el órgano culpable**: tercios de la lista de 32 estados, luego tercios del catálogo de órganos dentro del estado culpable. Dentro del órgano culpable recorre hoja por hoja páginas de `size=1`, único punto donde se pagina, porque una fila envenenada solo se aísla así. Tercios y no mitades porque con varios culpables posibles el costo por culpable es (k/ln k)·ln n, mínimo entero en k = 3.
+
+```bash
+python3 api/harvest/rescue_poisoned.py --days 30-05-2014 --dry-run   # una rebanada, sin escribir
+python3 api/harvest/rescue_poisoned.py                               # la pasada entera
+python3 api/harvest/rescue_poisoned.py --status                      # recuperado y perdido por mes
+tail -f api/harvest/logs/rescue.log
+```
+
+Escribe las filas recuperadas en el `.jsonl` del mes con la misma deduplicación por terna, y deja en cada rebanada del `state.json` un bloque `rescue` (hits, filas, asuntos, perdidos, peticiones por nivel, culpables y hojas opacas). La rebanada pasa a `rescued` si no quedó ningún bloque ilegible, y a `rescued_partial` si quedaron hojas opacas o páginas envenenadas; la pérdida por diferencia se informa aparte, porque la fuente casi siempre pierde algo. Es reanudable: salta lo que ya tiene bloque `rescue`. Los estados culpables y sus órganos se guardan en `rescue_memory` y sirven de atajo —una petición «todos los estados menos los culpables conocidos»—, nunca de suposición: si ese bloque devuelve 500, se acorrala la rebanada entera; solo se memoriza al culpable cuya respuesta fue 500 + `text/html`, no al que falló por red, porque únicamente el envenenamiento es estable en el tiempo.
+
+Hay un tercer desenlace además de sana y envenenada: la **hoja opaca**, donde ni `size=1` responde. Ahí no se recupera ni una fila y la pérdida solo se deduce por diferencia contra los hits declarados de la rebanada; cuando la fuente tampoco declara hits, la pérdida queda en `null` —desconocida, que no es cero— y los dos `--status` la cuentan aparte, en «rebanadas sin cifra de pérdida».
+
+### Resultado de la pasada
+
+Corrida del **7 al 8 de septiembre de 2026** sobre las **263 rebanadas** de la cola (233 envenenadas y 30 fallidas): **146,947 filas recuperadas**, **5,596 asuntos perdidos**, **387 hojas opacas**, **7,139 peticiones**. La corrida se cortó sola a las 09:25 del 8 con un 401 —la máquina se suspendió a media petición y el token de 8 h expiró mientras dormía—, y el relanzamiento retomó las 65 rebanadas que faltaban sin repetir ni perder ninguna. Ninguna de las 263 salió `rescued`: en todas quedó al menos una hoja opaca o una página envenenada.
+
+Para 2014, que es donde estaba el 99 % del volumen, la pérdida queda en **5,442 filas de las 177,367 declaradas por la fuente, el 3.1 %**: 5,289 en hojas opacas y 153 filas envenenadas una por una. La unidad es la fila, la misma en la que la fuente declara sus conteos, y en 2014 una fila es casi siempre un asunto.
 
 ## Fallas conocidas de la fuente
 
@@ -82,9 +105,9 @@ La diferencia entre las dos es **determinista y se lee en la respuesta**, no en 
 
 Esas cuatro dimensiones son particiones exhaustivas del índice: comprobado el 25 de agosto, la suma de hits de los hijos da exactamente el total del padre (por especialidad, y por órgano en 17-01-2011 [PRIMER CIRCUITO] [Juzgado de Distrito] [Administrativa]: 37 = 37, residuo 0). Si alguna vez no cuadra, el cosechador escribe un `WARNING` con el faltante y lo contabiliza.
 
-**Lo que ya no se hace**: paginar la hoja con páginas de 100, 10 y 1 para dejar sola a la fila culpable. Esa era la última rama de la escalera y se retiró el 26 de agosto, porque la paginación no es fiable por diseño —el orden del resultado cambia entre dos llamadas idénticas, así que solo una petición que cubra la rebanada entera la lee fielmente— y porque aislar la fila mala cuesta decenas de peticiones por rebanada. La función `harvest_by_page` sigue en el archivo, sin usarse, reservada para la **pasada de rescate**, que está por diseñar: leerá las `poisoned` y las `failed` con otra estrategia, una vez terminada la cosecha principal.
+**Lo que ya no se hace**: paginar la hoja con páginas de 100, 10 y 1 para dejar sola a la fila culpable. Esa era la última rama de la escalera y se retiró el 26 de agosto, porque la paginación no es fiable por diseño —el orden del resultado cambia entre dos llamadas idénticas, así que solo una petición que cubra la rebanada entera la lee fielmente— y porque aislar la fila mala cuesta decenas de peticiones por rebanada. La función `harvest_by_page` sigue en el archivo, sin usarse, reservada por si alguna vez hiciera falta; la **pasada de rescate** que lee las `poisoned` y las `failed` vive aparte, en `rescue_poisoned.py`.
 
-Las rebanadas envenenadas se listan con `--list-poisoned`, una por línea en JSON (mes, etiqueta, fechas, filtros y hits), que es justamente la entrada de esa pasada de rescate. `--retry-failed` y `--retry-partial` **no las tocan**: reabrirlas solo repetiría el mismo 500.
+Las rebanadas envenenadas se listan con `--list-poisoned`, una por línea en JSON (mes, etiqueta, fechas, filtros y hits), que es justamente la entrada de la pasada de rescate. `--retry-failed` y `--retry-partial` **no las tocan**: reabrirlas solo repetiría el mismo 500.
 
 Las hojas de las que no se recupera ni una fila se marcan `failed`, se registran en la bitácora y salen en `--status`; `--retry-failed` las reabre. Las que quedaron a medias en cosechas anteriores siguen en `partial` con su `rows_missing` e `isolated_bad`.
 
@@ -100,13 +123,13 @@ Una hoja reabierta se vuelve a correr **entera**, no desde donde se quedó. Las 
 
 `--status` cierra con dos cifras:
 
-- **filas perdidas contabilizadas** (`rows_missing`): la diferencia entre los hits que declaraba una rebanada y las filas que de verdad se escribieron. Se cobra al nivel más bajo que la conoce —la hoja paginada— y cada padre solo carga con lo que sus hijos no reportaron ya, así que nada se cuenta dos veces. Es una **cota inferior**: `total_hits` cuenta asuntos y las filas son sentencias, de modo que una rebanada sana suele escribir más filas que hits.
+- **filas perdidas contabilizadas** (`rows_missing`): la diferencia entre los hits que declaraba una rebanada y las filas que de verdad se escribieron. Se cobra al nivel más bajo que la conoce —la hoja paginada— y cada padre solo carga con lo que sus hijos no reportaron ya, así que nada se cuenta dos veces. `total_hits` cuenta filas (resoluciones), no asuntos, así que la diferencia se mide en filas; una rebanada que escribe más filas que hits declarados aporta cero, no un saldo negativo.
 - **rebanadas envenenadas** (`poisoned`): cuántas rebanadas devolvieron 500 + `text/html` y con cuántos hits declarados, que es el tamaño de lo que la pasada de rescate tiene por delante. Sus hits se cargan como pérdida a sus padres, así que la cifra anterior ya los incluye.
 - **filas envenenadas aisladas** (`isolated_bad`): herencia de la escalera de páginas retirada el 26 de agosto; cuenta las páginas de tamaño 1 que seguían devolviendo 500 en los meses cosechados antes de ese día. La cosecha nueva no la incrementa.
 
 ## Qué hacer después con los datos
 
-Las filas son de sentencia, no de asunto: un mismo expediente genera varias. La llave para deduplicar es la terna **(`AsuntoNeunId`, `SintesisOrden`, `NumeroOrden`)**. En modo `day` no debería haber duplicados dentro de un mes, pero conviene deduplicar de todos modos al consolidar, porque las rebanadas partidas por circuito pueden traslaparse si un asunto cambia de órgano.
+Las filas son de resolución, no de asunto: un mismo expediente genera varias. La llave para deduplicar es la terna **(`AsuntoNeunId`, `SintesisOrden`, `NumeroOrden`)**. En modo `day` no debería haber duplicados dentro de un mes, pero conviene deduplicar de todos modos al consolidar, porque las rebanadas partidas por circuito pueden traslaparse si un asunto cambia de órgano.
 
 ```bash
 cat api/harvest/data/metadata/*.jsonl | python3 -c "
@@ -121,4 +144,4 @@ for line in sys.stdin:
 " > todo-dedupe.jsonl
 ```
 
-El campo `AsuntoNeunId` es además la llave para bajar después el PDF, por una cadena de tres saltos: (1) la búsqueda entrega el `AsuntoNeunId` y los campos de orden; (2) la ficha por expediente (`por-numero-expediente/registro-info/` y `lista-resoluciones/`, mismo Bearer anónimo) aporta el `idOrgano`, que no viene en la búsqueda y se aprende una vez por órgano; (3) con ambos se arma la URL pública del documento en `sise.cjf.gob.mx/SVP/word1.aspx?arch=…&sec=…&svp=1`, que responde `application/pdf` **sin autenticación**, con dos patrones de nombre (moderno `.pdf`, antiguo `.docx` servido como PDF). El detalle completo —patrones de nombre, mapa parcial de `idOrgano` y los desenlaces cuando el archivo no existe— está en la referencia `fuente-buscadorsise` (`[[fuente-buscadorsise]]`, en `docs/`, que es un submódulo privado: si no tienes acceso, esta descripción es todo lo que hace falta para reconstruir la cadena).
+El campo `AsuntoNeunId` es además la llave para bajar después el PDF, por una cadena de tres saltos: (1) la búsqueda entrega el `AsuntoNeunId` y los campos de orden (`SintesisOrden`, `NumeroOrden`); (2) el `idOrgano`, que no viene en la búsqueda ni en la ficha por expediente, se aprende una vez por órgano de cualquier URL ya resuelta (los primeros cuatro dígitos de `arch=`); (3) con ambos se arma el nombre del documento en `sise.cjf.gob.mx/SVP/word1.aspx?arch=…&sec=…&svp=1`, que responde `application/pdf` **sin autenticación** e ignora la extensión, con dos patrones de nombre (moderno `<idOrgano><NEUN><SintesisOrden:3>`, antiguo `<idOrgano><NEUN><SintesisOrden:4><NumeroOrden:3>`). El detalle completo —patrones de nombre, mapa parcial de `idOrgano` y los desenlaces cuando el archivo no existe— está en la referencia sobre la fuente en `docs/` (submódulo privado: si no tienes acceso, esta descripción es todo lo que hace falta para reconstruir la cadena).

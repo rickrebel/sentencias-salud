@@ -24,8 +24,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SEARCH_URL = 'https://apisise.cjf.gob.mx/bss/por-sentencia/buscar/'
 CATALOG_URL = 'https://apisise.cjf.gob.mx/bss/por-sentencia/catalogos/'
 TIPO_ASUNTO = 'Amparo Indirecto'
-USER_AGENT = ('sentencias-salud (Coordinación de las Clínicas Jurídicas '
-              '- Ibero CDMX; ricardo@yeeko.org)')
+USER_AGENT = ('sentencias-salud (Centro Interdisciplinario para la '
+              'Enseñanza Clínica del Derecho, Ibero CDMX; '
+              'ricardo@yeeko.org)')
 
 # The API refuses any offset >= 50,000, so every date chunk must stay
 # below it; a month of Amparo Indirecto averages ~23k.
@@ -57,10 +58,16 @@ SPLIT_KEYS = ['CircuitoRegion', 'OrganoTipo', 'EspecialidadOrgano',
 CATALOG_FIELD = {'CircuitoRegion': 'circuito',
                  'OrganoTipo': 'tipo_de_organo',
                  'EspecialidadOrgano': 'especialidad',
-                 'OrganoNombreOficial': 'organo'}
-# Paging rungs: kept for the rescue pass that is still to be designed.
-# They never run in the main harvest, because paging re-cuts the raw
-# result on every call and no page-based read of a slice is faithful.
+                 'OrganoNombreOficial': 'organo',
+                 # Estado no parte la cosecha, pero la pasada de rescate
+                 # acorrala por él: es el primer filtro que aísla al
+                 # culpable con listas de valores.
+                 'Estado': 'estado'}
+# Paging rungs: they never run in the main harvest, because paging
+# re-cuts the raw result on every call and no page-based read of a slice
+# is faithful. The rescue pass lives in rescue_poisoned.py and of these
+# only borrows PAGE_RUNG_MAX_PAGES, as the cap of its size=1 leaf;
+# harvest_by_page() itself has no caller left.
 PAGE_RUNG_SIZES = [100, 10, 1]
 # A leaf at the bottom of the ladder is small; if the first pages fail
 # and total_hits is still unknown, there is nothing to keep paging for.
@@ -470,9 +477,11 @@ def existing_keys(path):
 
 
 def harvest_by_page(session, slc):
-    """NO se usa en la cosecha principal: queda para la pasada de
-    rescate, todavía por diseñar. Pagina la hoja encogiendo las páginas
-    que responden 500.
+    """Sin ningún llamador: la pasada de rescate se implementó aparte,
+    en `rescue_poisoned.py`, que acorrala por listas de valores y de
+    aquí solo toma `PAGE_RUNG_MAX_PAGES`. Se conserva porque describe
+    la escalera de paginación que se retiró. Pagina la hoja encogiendo
+    las páginas que responden 500.
 
     Returns (rows, hits, isolated_bad, requests, seconds); `hits` is
     None when no page ever answered and `isolated_bad` counts the
@@ -812,8 +821,11 @@ def wait_for_schedule(window):
 def missing_of(entry):
     """Rows a month declared and never wrote, counted once: each parent
     only carries the loss its children did not already report."""
-    return (sum(s.get('rows_missing', 0) for s in entry.get('slices', []))
-            + sum(p.get('rows_missing', 0)
+    # `or 0` y no un default: la pasada de rescate deja `rows_missing`
+    # en None cuando la fuente no declaró hits y la pérdida es
+    # desconocida, que no es lo mismo que nula.
+    return (sum(s.get('rows_missing') or 0 for s in entry.get('slices', []))
+            + sum(p.get('rows_missing') or 0
                   for p in entry.get('parents', {}).values()))
 
 
@@ -871,13 +883,24 @@ def print_status(out_dir):
           % (rows, hits))
     print('filas perdidas contabilizadas: %d; filas envenenadas aisladas: %d'
           % (missing, isolated))
+    unknown = sum(1 for e in months.values() for s in e.get('slices', [])
+                  if s.get('rescue') and s['rescue'].get('lost') is None)
+    if unknown:
+        print('rebanadas sin cifra de pérdida: %d (rescatadas sin hits '
+              'declarados; no entran en el total de arriba)' % unknown)
     print('rebanadas envenenadas: %d (%d hits declarados); las reabre la '
           'pasada de rescate, no --retry-failed' % (len(poisoned),
                                                     poisoned_hits))
-    if pages and seconds:
+    if pages and seconds and len(done) < len(months):
         pace = seconds / pages
-        pending = sum(max(0, e.get('pages_total', 0) - e.get('pages_done', 0))
-                      for e in months.values())
+        # Una rebanada rescatada ya no está pendiente aunque nunca haya
+        # contado como página cosechada: sin descontarla, el ETA seguía
+        # anunciando 263 páginas con la cosecha entera terminada.
+        rescued = sum(1 for e in months.values()
+                      for s in e.get('slices', []) if s.get('rescue'))
+        pending = max(0, sum(
+            max(0, e.get('pages_total', 0) - e.get('pages_done', 0))
+            for e in months.values()) - rescued)
         eta = pending * (pace + PAUSE_BETWEEN_PAGES)
         print('ritmo: %.1f s/página; faltan %d páginas de los meses '
               'iniciados ≈ %.1f h' % (pace, pending, eta / 3600))
@@ -885,10 +908,10 @@ def print_status(out_dir):
 
 # --- main -------------------------------------------------------------
 
-def setup_logging(log_dir, verbose=True):
+def setup_logging(log_dir, verbose=True, filename='harvest.log'):
     os.makedirs(log_dir, exist_ok=True)
     handler = logging.handlers.RotatingFileHandler(
-        os.path.join(log_dir, 'harvest.log'), maxBytes=10 * 1024 * 1024,
+        os.path.join(log_dir, filename), maxBytes=10 * 1024 * 1024,
         backupCount=5, encoding='utf-8')
     handler.setFormatter(logging.Formatter(
         '%(asctime)s %(levelname)s %(message)s', '%Y-%m-%d %H:%M:%S'))
@@ -926,9 +949,10 @@ def main():
     parser.add_argument('--schedule',
                         help='ventana horaria local, p. ej. 23:00-06:45')
     parser.add_argument('--partition', choices=['month', 'day'],
-                        default='month',
-                        help='month: pagina el mes y pierde ~3%% de las '
-                             'filas; day: una página por día (completo)')
+                        default='day',
+                        help='day (por omisión): una página por día '
+                             '(completo); month: pagina el mes y pierde '
+                             '~3%% de las filas')
     parser.add_argument('--size', type=int)
     parser.add_argument('--token',
                         default=os.path.join(BASE_DIR, 'token.txt'))

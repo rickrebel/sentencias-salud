@@ -26,14 +26,18 @@ import urllib.error
 import urllib.request
 
 BASE = "https://apisise.cjf.gob.mx/bss/"
-TOKEN_FILE = os.path.expanduser("~/.cache/sentencias-salud/token.txt")
+TOKEN_FILE = os.environ.get(
+    "SISE_TOKEN",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                 "..", "..", "..", "harvest", "token.txt"),
+)
 OUT = os.environ.get(
     "SISE_OUT",
     "/home/rick/dev/ibero/sentencias-salud/docs/records/assets/"
     "2026-08-25-buscadorsise/denominator",
 )
-UA = ("sentencias-salud (Coordinación de las Clínicas Jurídicas - "
-      "Ibero CDMX; ricardo@yeeko.org)")
+UA = ("sentencias-salud (Centro Interdisciplinario para la "
+      "Enseñanza Clínica del Derecho, Ibero CDMX; ricardo@yeeko.org)")
 PAUSE = 0.5
 TOKEN = open(TOKEN_FILE).read().strip()
 
