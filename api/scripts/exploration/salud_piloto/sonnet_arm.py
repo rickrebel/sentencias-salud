@@ -13,6 +13,7 @@ is recorded as such.
 """
 
 import json
+import os
 import time
 
 import anthropic
@@ -146,17 +147,21 @@ def run(item, cfg, inputs):
     if err:
         rec['error'] = err
         return rec
+    rec['latency_s'] = round(time.perf_counter() - t0, 3)
+    rec['request_id'] = msg._request_id
+    return read_message(msg, rec, tags, cfg)
+
+
+def read_message(msg, rec, tags, cfg, discount=1.0):
     usage = msg.usage.to_dict()
     rec.update({
-        'latency_s': round(time.perf_counter() - t0, 3),
         'model_returned': msg.model, 'message_id': msg.id,
-        'request_id': msg._request_id,
         'stop_reason': msg.stop_reason,
         'tokens_in': usage.get('input_tokens'),
         'tokens_out': usage.get('output_tokens'),
         'tokens_cache_write': usage.get('cache_creation_input_tokens'),
         'tokens_cache_read': usage.get('cache_read_input_tokens'),
-        'cost_usd': round(cost(usage), 6),
+        'cost_usd': round(cost(usage) * discount, 6),
     })
     if msg.stop_reason == 'refusal':
         details = msg.stop_details
@@ -224,3 +229,73 @@ def count_tokens(item, cfg, inputs):
         return {'error': err}
     return {'input_tokens': res.input_tokens,
             'chars': len(kw['messages'][0]['content'])}
+
+
+# Message Batches bill every token at half price.
+BATCH_DISCOUNT = 0.5
+BATCH_POLL_S = 30
+
+
+def run_batch(items, cfg, inputs, out_path, sha, placeholder):
+    """Submit the pending items as one Message Batch, wait for it and
+    append its records to out_path like a live run. The batch id is kept
+    beside out_path, so a rerun resumes the wait instead of paying
+    again."""
+    client_ = cfg['client']
+    state_path = out_path + '.batch'
+    reqs, tags_of, meta = [], {}, {}
+    for item in items:
+        kw, tags = request(item, cfg, inputs)
+        reqs.append({'custom_id': item['asunto_id'], 'params': kw})
+        tags_of[item['asunto_id']] = tags
+        meta[item['asunto_id']] = (item['stratum'],
+                                   len(kw['messages'][0]['content']))
+    if os.path.exists(state_path):
+        with open(state_path, encoding='utf-8') as fh:
+            batch_id = fh.read().strip()
+        print('resuming batch %s' % batch_id, flush=True)
+    else:
+        if not reqs:
+            print('nothing pending', flush=True)
+            return 0
+        batch = client_.messages.batches.create(requests=reqs)
+        batch_id = batch.id
+        with open(state_path, 'w', encoding='utf-8') as fh:
+            fh.write(batch_id)
+        print('submitted batch %s with %d requests' % (batch_id, len(reqs)),
+              flush=True)
+    while True:
+        b = client_.messages.batches.retrieve(batch_id)
+        c = b.request_counts
+        print('%s status=%s processing=%d succeeded=%d errored=%d'
+              % (time.strftime('%H:%M:%S'), b.processing_status,
+                 c.processing, c.succeeded, c.errored), flush=True)
+        if b.processing_status == 'ended':
+            break
+        time.sleep(BATCH_POLL_S)
+    n, total = 0, 0.0
+    with open(out_path, 'a', encoding='utf-8') as out:
+        for res in client_.messages.batches.results(batch_id):
+            aid = res.custom_id
+            if aid not in tags_of:
+                continue
+            stratum, chars = meta[aid]
+            rec = {'id': aid, 'arm': cfg['arm'], 'stratum': stratum,
+                   'prompt_sha': sha, 'placeholder': placeholder,
+                   'model': MODEL, 'effort': cfg['effort'],
+                   'chars': chars, 'tags': len(tags_of[aid]),
+                   'batch_id': batch_id}
+            if res.result.type == 'succeeded':
+                read_message(res.result.message, rec, tags_of[aid], cfg,
+                             BATCH_DISCOUNT)
+            else:
+                rec['error'] = 'batch %s: %s' % (
+                    res.result.type, getattr(res.result, 'error', ''))
+            rec['finished_at'] = time.strftime('%Y-%m-%dT%H:%M:%S%z')
+            out.write(json.dumps(rec, ensure_ascii=False) + '\n')
+            n += 1
+            total += rec.get('cost_usd') or 0.0
+    os.remove(state_path)
+    print('batch %s: %d records, cost $%.4f' % (batch_id, n, total),
+          flush=True)
+    return 0

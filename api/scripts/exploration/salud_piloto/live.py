@@ -76,6 +76,8 @@ def main():
         raise SystemExit('unknown arms: %s (choose among %s)'
                          % (', '.join(sorted(bad)), ', '.join(run.ARMS)))
 
+    # The viewer shows the v2 run; a live answer must use the same prompts.
+    run.common.PROMPT_DIR = viz.V2_PROMPTS
     t0 = time.time()
     data = viz.Data()
     item = data.item(args.asunto)

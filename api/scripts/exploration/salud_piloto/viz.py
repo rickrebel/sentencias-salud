@@ -3,7 +3,9 @@
 asuntos (decision chips of the four arms, agreement with sonnet_full,
 filters, demo cases) and one page per asunto with its metadata, the
 four answers and the clean2 text, cited paragraphs highlighted and
-clickable. Stdlib only; opens from file://, no server.
+clickable. Stdlib only; opens from file://, no server and no network:
+the pages carry their data as JSON and a vendored Vue + Vuetify app
+(``viz_html.py``, ``viz_app.js``) copied next to them.
 
 An arm classified live (``live.py``) shows its latest live answer
 instead of the pilot's; the pilot results are only read. Any asunto of
@@ -17,6 +19,7 @@ Usage (from api/):
 
 import argparse
 import os
+import shutil
 import sys
 import time
 
@@ -28,10 +31,19 @@ import viz_html as H  # noqa: E402
 
 VIZ_DIR = os.path.join(common.API, 'media', 'salud-piloto-viz')
 PDF_DIR = os.path.join(common.API, 'media', 'pdf-sample-20k')
-LIVE_DIR = os.path.join(common.OUT_DIR, 'live')
+# v2 of the prompts is the run shown; v1 (common.OUT_DIR) is the «antes».
+V1_DIR = common.OUT_DIR
+V2_DIR = os.path.join(os.path.dirname(common.OUT_DIR),
+                      '2026-10-23-salud-v2')
+V1_PROMPTS = common.PROMPT_DIR
+V2_PROMPTS = os.path.join(HERE, 'prompts', 'v2')
+# Live answers are read with the v2 scheme, so they live apart from the
+# v1 live records.
+LIVE_DIR = os.path.join(V2_DIR, 'live')
 TEMA_CUT = 140
+APP_FILES = ['viz_app.js', 'viz_app.css']
 
-# Verified against the pilot results on 2026-10-23 before captioning.
+# Verified against the v2 results on 2026-10-23 before captioning.
 CASES = [
     ('32423847', 'Central claro: se negó atención médica y hemodiálisis '
                  'por insuficiencia renal.'),
@@ -43,27 +55,52 @@ CASES = [
                  'se descarta.'),
     ('30852646', 'Una multa y el refrendo de una tarjeta de circulación: '
                  'se descarta.'),
-    ('32356454', 'Desacuerdo: un hospital privado no entrega el expediente '
-                 'clínico; Jev incluye, Sonnet con el texto lo deja en '
-                 'frontera.'),
+    ('32356454', 'Una clínica privada niega al paciente su expediente '
+                 'clínico: información sobre su propia salud. Era un '
+                 'desacuerdo en v1; en v2 las cuatro lecturas incluyen.'),
 ]
+
+
+def scheme_at(prompt_dir):
+    old, common.PROMPT_DIR = common.PROMPT_DIR, prompt_dir
+    try:
+        return common.load_scheme()[0]
+    finally:
+        common.PROMPT_DIR = old
+
+
+def decide(scheme, arm, ans):
+    if arm.startswith('jev'):
+        return common.decide_probs(scheme, ans)
+    return common.decide_labels(scheme, ans)
+
+
+def load_run(run_dir):
+    return {a: compare.load_arm(os.path.join(
+        run_dir, a, 'results.jsonl')) or {} for a in H.ARMS}
 
 
 class Data:
     """Everything the pages read, loaded once."""
 
     def __init__(self):
-        self.scheme, _, _ = common.load_scheme()
+        self.scheme = scheme_at(V2_PROMPTS)
+        self.scheme_v1 = scheme_at(V1_PROMPTS)
         self.cats = {c['id']: c for c in self.scheme['categorias']}
         self.sample = common.load_sample()
         self.in_sample = {s['asunto_id']: s for s in self.sample}
         self.rows = common.load_rows()
         self.usable, _ = common.load_conversion()
         self.order = common.doc_order()
-        self.pilot = {a: compare.load_arm(os.path.join(
-            common.OUT_DIR, a, 'results.jsonl')) or {} for a in H.ARMS}
-        self.live = {a: compare.load_arm(os.path.join(
-            LIVE_DIR, a, 'results.jsonl')) or {} for a in H.ARMS}
+        self.pilot = load_run(V2_DIR)
+        self.v1 = load_run(V1_DIR)
+        self.live = load_run(LIVE_DIR)
+
+    def decision(self, arm, asunto, v1=False):
+        """Pilot decision ('' if the arm has no answer), never live."""
+        run = self.v1 if v1 else self.pilot
+        ans = (run[arm].get(asunto) or {}).get('answer')
+        return decide(self.scheme_v1 if v1 else self.scheme, arm, ans)[0]
 
     def item(self, asunto):
         """The pilot's sample row, or one built the way draw_sample.py
@@ -201,7 +238,8 @@ def build_page(data, asunto, prev=None, nxt=None):
     marks, badges = marks_and_badges(cards)
     ctx = {'fields': {m[0] for m in meta if m[0] != 'sep'},
            'tags': {b['tag'] for b in blocks if b['kind'] == 'par'},
-           'marks': marks, 'badges': badges, 'scheme_cats': data.cats}
+           'marks': marks, 'badges': badges, 'scheme_cats': data.cats,
+           'v1': {a: data.decision(a, asunto, v1=True) for a in H.ARMS}}
     head = rows[0]
     sub = '%s · %s' % (head['numero_alias'],
                        'estrato ' + item['stratum'] if item['stratum']
@@ -222,16 +260,15 @@ def build_page(data, asunto, prev=None, nxt=None):
 
 def summary(data):
     """Decision counts per arm and agreement with sonnet_full, on the
-    pilot results only (a live rerun is not part of the pilot)."""
+    pilot results only (a live rerun is not part of the pilot); and the
+    v1 -> v2 counts per arm and stratum."""
+    ids = [s['asunto_id'] for s in data.sample]
     dec = {a: {} for a in H.ARMS}
     for a in H.ARMS:
-        for s in data.sample:
-            ans = (data.pilot[a].get(s['asunto_id']) or {}).get('answer')
-            if a.startswith('jev'):
-                d, _ = common.decide_probs(data.scheme, ans)
-            else:
-                d, _ = common.decide_labels(data.scheme, ans)
-            dec[a][s['asunto_id']] = (d, (ans or {}).get('nivel') or '')
+        for i in ids:
+            ans = (data.pilot[a].get(i) or {}).get('answer')
+            dec[a][i] = (decide(data.scheme, a, ans)[0],
+                         (ans or {}).get('nivel') or '')
     counts = {a: {} for a in H.ARMS}
     for a in H.ARMS:
         for d, _ in dec[a].values():
@@ -248,7 +285,18 @@ def summary(data):
                       'agree': sum(x[1] == y[1] for x, y in both)},
             'decision': {'n': len(both),
                          'agree': sum(x[0] == y[0] for x, y in both)}}
-    return {'counts': counts, 'agree': agree}
+    versions = {}
+    for a in H.ARMS:
+        ran = any(dec[a][i][0] for i in ids)
+        per = {}
+        for s in data.sample:
+            i, st = s['asunto_id'], s['stratum']
+            for v, d in (('v1', data.decision(a, i, v1=True)),
+                         ('v2', dec[a][i][0])):
+                c = per.setdefault(st, {}).setdefault(v, {})
+                c[d] = c.get(d, 0) + 1
+        versions[a] = {'ran': ran, 'strata': per}
+    return {'counts': counts, 'agree': agree, 'versions': versions}
 
 
 def index_rows(data):
@@ -292,13 +340,16 @@ def build_index(data):
     for a, caption in CASES:
         if a in by_id:
             cases.append({'id': a, 'caption': caption,
-                          'dec': by_id[a]['dec']})
-    cost = sum((r or {}).get('cost_usd') or 0.0
-               for arm in H.ARMS for r in data.pilot[arm].values())
+                          'dec': by_id[a]['dec'],
+                          'v1': {arm: data.decision(arm, a, v1=True)
+                                 for arm in H.ARMS}})
+    cost = sum((r or {}).get('cost_usd') or 0.0 for run in
+               (data.v1, data.pilot) for arm in H.ARMS
+               for r in run[arm].values())
     page = H.render_index({
         'rows': rows, 'summary': summary(data), 'cases': cases,
         'live': live_list(data), 'n': len(rows),
-        'cost': ('%.2f' % cost).replace('.', ','),
+        'cost': '%.2f' % cost,
         'stamp': time.strftime('%d/%m/%Y %H:%M')})
     path = os.path.join(VIZ_DIR, 'index.html')
     os.makedirs(VIZ_DIR, exist_ok=True)
@@ -316,10 +367,22 @@ def neighbours(data, asunto):
             ids[i + 1] if i + 1 < len(ids) else None)
 
 
+def copy_assets():
+    """vendor/ and the app into the viewer's assets folder, replaced
+    whole so a stale vendored file cannot linger."""
+    dest = os.path.join(VIZ_DIR, H.ASSETS)
+    shutil.rmtree(dest, ignore_errors=True)
+    shutil.copytree(os.path.join(HERE, 'vendor'), dest)
+    for name in APP_FILES:
+        shutil.copy(os.path.join(HERE, name), dest)
+
+
 def build(only=None):
-    """Writes the index and the pages (one, or all of the sample plus
-    every live asunto). Returns the paths of the pages written."""
+    """Writes the assets, the index and the pages (one, or all of the
+    sample plus every live asunto). Returns the paths of the pages
+    written."""
     data = Data()
+    copy_assets()
     build_index(data)
     if only:
         ids = only

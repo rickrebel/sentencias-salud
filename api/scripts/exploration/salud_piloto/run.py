@@ -100,11 +100,21 @@ def main():
     ap.add_argument('--count-tokens', action='store_true',
                     help='Sonnet arms: only count input tokens')
     ap.add_argument('--allow-placeholder', action='store_true')
+    ap.add_argument('--prompts', default='',
+                    help='prompt directory (default prompts/), e.g. '
+                         'prompts/v2; pair it with --out')
+    ap.add_argument('--batch', action='store_true',
+                    help='Sonnet arms: one Message Batch (half price, '
+                         'asynchronous) instead of live calls')
     ap.add_argument('--print-request', default='',
                     help='print the request body for one id and exit')
     args = ap.parse_args()
 
     jev = args.arm.startswith('jev')
+    if args.prompts:
+        common.PROMPT_DIR = os.path.abspath(args.prompts)
+    if args.batch and (jev or args.count_tokens):
+        raise SystemExit('--batch is for live Sonnet runs')
     if args.count_tokens and jev:
         raise SystemExit('--count-tokens is for the Sonnet arms')
     arm = jev_arm if jev else sonnet_arm
@@ -148,6 +158,9 @@ def main():
              len(pending), args.workers, spent, out_path), flush=True)
 
     inputs = Inputs()
+    if args.batch:
+        return sonnet_arm.run_batch(pending, cfg, inputs, out_path, sha,
+                                    placeholder)
     work = queue.Queue()
     for s in pending:
         work.put(s)

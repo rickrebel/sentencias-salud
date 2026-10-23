@@ -97,14 +97,15 @@ def questions(sec, kind, tags):
          'borde': choice(context, scheme['borde']['pregunta'],
                          {o['id']: o['definicion']
                           for o in scheme['borde']['opciones']})}
-    # Categories only need the state description: the salud definition
-    # would repeat in every noul and spend the per-request token limit.
+    # The v1 wording leaves the salud definition out of the nouls (it
+    # would repeat in each); a prompt may bring it in with {definicion}.
     for c in scheme['categorias']:
         q['cat_' + c['id']] = {
             'type': 'noul',
             'instructions': {
                 'contexto': estado,
-                'pregunta': sec['categoría'].format(nombre=c['nombre']),
+                'pregunta': sec['categoría'].format(
+                    nombre=c['nombre'], definicion=scheme['definicion']),
                 'criterio': c['definicion']}}
     windows = None
     if len(tags) <= MAX_OPTIONS:
