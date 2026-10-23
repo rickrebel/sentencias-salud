@@ -1,0 +1,172 @@
+/* Salud pilot viewer on top of Vuetify, with the OCSA dashboard look.
+   Sized for a projector first: the root font is larger than Vuetify's
+   16px so every rem-based size grows with it. */
+html { font-size: 17px; }
+/* A projector at 1920 wide is read from far away. */
+@media (min-width: 1600px) { html { font-size: 19px; } }
+body, .v-application { font-family: Roboto, "Segoe UI", Arial, sans-serif; }
+#app:empty::before { content: "Cargando…"; display: block; padding: 40px;
+  font: 20px Roboto, sans-serif; color: #555; }
+
+/* OCSA restores MD2's uppercase buttons over Vuetify's MD3 default. */
+.v-btn:not(.text-none):not(.text-lowercase):not(.text-capitalize) {
+  text-transform: uppercase;
+}
+
+.bar-title { font-size: 1.3rem; font-weight: 500; letter-spacing: .01em; }
+.prov.v-chip { color: #c4001f !important; font-weight: 700;
+  letter-spacing: .06em; }
+.wrap { max-width: 1560px; margin: 0 auto; padding: 24px 28px 48px; }
+.muted { color: #4a505c; font-size: .9rem; }
+.nw { white-space: nowrap; }
+.where-item { margin-right: 10px; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.hero .v-card-text { padding: 22px 28px; }
+.hero-title { font-size: 2rem; line-height: 1.2; font-weight: 500;
+  margin: 0 0 12px; color: #16181d; }
+.lead { font-size: 1.08rem; line-height: 1.55; max-width: 1400px;
+  color: #22252b; margin: 0; }
+.decision-note { font-size: 1.05rem; line-height: 1.9; color: #16181d; }
+.sec-title { font-size: 1.4rem; font-weight: 500; line-height: 1.3;
+  display: flex; align-items: center; gap: 8px; margin: 0; }
+
+/* decisions */
+.dec-chip.v-chip { min-width: 7.4em; justify-content: center;
+  font-weight: 700; font-size: .95rem; }
+.dec-chip.dec-big { min-width: 8.6em; font-size: 1.15rem; }
+.dec-none.v-chip { border-style: dashed; color: #555; font-weight: 400; }
+
+/* demo cases */
+.case-card { border-radius: 12px !important; }
+.case-id { font-size: 1.35rem; font-weight: 700; }
+.case-text { font-size: 1.02rem; line-height: 1.45; color: #22252b;
+  padding-bottom: 6px; }
+.case-decs { flex-wrap: wrap; gap: 6px 18px; padding: 4px 16px 14px; }
+.case-dec { display: inline-flex; align-items: center; gap: 8px; }
+
+/* arm heads */
+.arm-head { display: inline-flex; flex-direction: column; line-height: 1.2; }
+.arm-head.inline { flex-direction: row; align-items: baseline; gap: 6px; }
+.arm-head .sw { display: inline-block; width: 12px; height: 12px;
+  border-radius: 3px; margin-right: 6px; }
+.arm-head:not(.inline) .sw { margin-bottom: 3px; }
+.arm-src { color: #5a606c; font-weight: 400; font-size: .85rem; }
+
+/* summary */
+.sum-table { font-size: 1rem; }
+.sum-table th { font-weight: 700 !important; color: #16181d !important;
+  background: #f1f2f5; }
+.sum-table td.ref-note { font-style: italic; color: #4a505c; }
+
+/* live */
+.live-card { border-radius: 12px !important; }
+.live-row { display: flex; flex-wrap: wrap; gap: 6px 18px;
+  align-items: center; font-size: 1rem; }
+
+/* list */
+.filters { display: flex; flex-wrap: wrap; gap: 14px 16px;
+  align-items: center; }
+.filters .v-select { flex: 0 0 auto; }
+.filters .f-st { width: 210px; } .filters .f-dec { width: 180px; }
+.filters .f-arm { width: 330px; } .filters .f-sort { width: 300px; }
+.filters .f-dis { flex: 0 0 auto; }
+.count { font-size: 1.05rem; }
+.list-table { font-size: 1rem; border-top: 1px solid #e3e5ea; }
+.list-table th { background: #2a2d34 !important; color: #fff !important;
+  font-weight: 500 !important; vertical-align: bottom;
+  padding-top: 8px !important;
+  padding-bottom: 8px !important; }
+.list-table th .arm-src { color: #d3d8e0; }
+.list-table td { padding-top: 6px !important; padding-bottom: 6px !important; }
+.list-table td.tema { max-width: 440px; color: #2b2f36; font-size: .95rem; }
+.link-id { color: #0b4f94; font-weight: 700; font-size: 1.05rem;
+  text-decoration: none; }
+a.link-id:hover { text-decoration: underline; }
+.dis { color: #b0001f; font-size: .82rem; font-weight: 700; }
+.foot { margin-top: 8px; }
+
+/* asunto page: two panes that scroll on their own */
+html.page-view, html.page-view body { overflow: hidden; height: 100%; }
+.back-btn { font-size: 1rem; }
+.bar-div { opacity: .5; }
+.bar-head { display: flex; flex-direction: column; min-width: 0;
+  line-height: 1.2; overflow: hidden; }
+.bar-id { font-size: 1.3rem; font-weight: 700; }
+.bar-sub { font-size: .9rem; opacity: .9; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
+.page-main { height: 100vh; }
+.panes { height: 100%; display: grid;
+  grid-template-columns: minmax(460px, 42%) 1fr; }
+.left, .right { overflow-y: auto; padding: 18px 22px 80px; }
+.left { background: #eceef2; border-right: 1px solid #cfd3da; }
+.right { background: #fff; }
+
+.res { font-size: .85rem; color: #4a505c; font-weight: 700; margin: 12px 0 4px;
+  text-transform: uppercase; letter-spacing: .04em; }
+.fld { display: grid; grid-template-columns: 96px 1fr; gap: 8px;
+  padding: 5px 8px; border-radius: 6px; font-size: .97rem;
+  }
+.fld .k, .par .k { font-family: "DejaVu Sans Mono", Consolas, monospace;
+  font-size: .78rem; color: #5a606c; padding-top: 3px; }
+.badges { grid-column: 2; display: flex; flex-wrap: wrap; gap: 4px; }
+
+.arm-card { border-radius: 12px !important; }
+.arm-card .av { color: #fff; font-weight: 700; font-size: 1.15rem; }
+.arm-title { font-size: 1.3rem; font-weight: 700; }
+.arm-sub { font-size: .9rem; opacity: 1; color: #4a505c;
+  white-space: normal; }
+.dec-row { display: flex; align-items: center; gap: 16px; margin: 2px 0 10px; }
+.nivel { font-size: 1.08rem; }
+.kv { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center;
+  margin: 8px 0; font-size: 1rem; color: #16181d; }
+.lbl { font-size: .88rem; color: #4a505c; min-width: 90px; }
+.catline { margin: 3px 0; display: flex; flex-wrap: wrap; gap: 4px;
+  align-items: center; }
+.cat.v-chip { font-size: .9rem; }
+.cite.v-chip { font-family: "DejaVu Sans Mono", Consolas, monospace;
+  font-size: .8rem; margin: 2px 3px 2px 0; }
+.cite.bad.v-chip { border-style: dashed; color: #888 !important;
+  text-decoration: line-through; }
+.razon { background: #f1f3f6;
+  border-radius: 10px; margin: 10px 0 4px; padding: 8px 12px;
+  font-size: .98rem; line-height: 1.5; color: #1d2026; }
+.flags { font-size: .9rem; color: #a8323a; margin-top: 6px; }
+.bars { display: grid; grid-template-columns: auto 1fr 52px;
+  gap: 6px 12px; align-items: center; font-size: .95rem; margin: 6px 0;
+  color: #16181d; }
+.bars .bt { position: relative; }
+.bars .cut { position: absolute; left: 50%; top: -4px; bottom: -4px;
+  border-left: 2px dotted #222; }
+.bars .bv { text-align: right; font-variant-numeric: tabular-nums; }
+
+.legend { font-size: .92rem; color: #4a505c; margin: 8px 0 14px; }
+.legend .sample { padding: 1px 6px; border-radius: 3px; }
+.docsep { display: flex; align-items: center; margin: 22px 0 8px;
+  padding: 8px 12px; background: rgb(var(--v-theme-accent)); color: #fff;
+  border-radius: 6px; font-weight: 500; font-size: 1rem; }
+.par { display: grid; grid-template-columns: 92px 1fr; gap: 10px;
+  padding: 6px 8px; margin: 2px 0; border-radius: 6px;
+  scroll-margin: 40vh; }
+.par p { margin: 0; font-size: 1.06rem; line-height: 1.6; max-width: 82ch;
+  color: #16181d; }
+.par .k a { color: #5a606c; }
+.par.note p { font-size: .95rem; color: #333; }
+.testado { font-size: .85em; color: #5a606c; }
+.cited { background: #fff1b8; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.jevtop { outline: 3px dashed #a34700; outline-offset: -3px; }
+.flash { animation: flash 1.6s ease-out; }
+@keyframes flash { 0% { box-shadow: 0 0 0 6px #1d6fd6; }
+  100% { box-shadow: 0 0 0 0 rgba(29, 111, 214, 0); } }
+@media (prefers-reduced-motion: reduce) { .flash { animation: none;
+  box-shadow: 0 0 0 4px #1d6fd6; } }
+
+@media (max-width: 1000px) {
+  .panes { grid-template-columns: 1fr; }
+}
+.v1-note {
+  font-size: .95rem; color: #4a505c; background: #eef0f4;
+  border-radius: 12px; padding: 1px 8px;
+}
+.ver-front { display: inline-flex; align-items: center; gap: 6px;
+  margin-left: 18px; }

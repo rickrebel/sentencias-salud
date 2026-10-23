@@ -1,0 +1,43 @@
+{
+ "_nota": "Esquema provisional del piloto salud (2026-10-23), compartido por los cuatro brazos: run.py genera de aquí el JSON schema de Sonnet, su bloque de definiciones en el prompt y las preguntas de Jev. La metodología y los catálogos son de Fernanda; esto es una aproximación para un ejercicio, no un criterio aprobado. Ids sin acentos porque son enums y columnas de compare.py. Cada «No es:» va dentro de la definición. Este campo _nota nunca llega a un modelo.",
+ "version": "propuesta-2026-10-23",
+ "definicion": "Para esta selección, un asunto trata del derecho a la salud cuando lo que se reclama o lo que el juez resuelve toca la protección de la salud de una persona o de un grupo: acceso a atención médica, diagnóstico, hospitalización, cirugía, medicamentos, tratamientos, insumos, vacunas o medidas sanitarias, frente a instituciones de salud, otras autoridades, prisiones o particulares obligados. La unidad es el acto reclamado: un asunto con varios actos reclamados trata de salud si al menos uno de ellos lo hace. No basta que aparezca la palabra «salud», el nombre de una institución de salud o de seguridad social (IMSS, ISSSTE, una Secretaría de Salud) o la expresión «seguridad social»: un cobro de cuotas, una pensión por años de servicio o un conflicto laboral con esas instituciones no es salud si no se discute la salud de nadie.",
+ "nivel": {
+  "pregunta": "¿Qué lugar ocupa el derecho a la salud en el acto reclamado del asunto más relacionado con la salud?",
+  "opciones": [
+   {"id": "central", "definicion": "Al menos un acto reclamado pide algo de salud o la protege directamente —atención médica, diagnóstico, cirugía, hospitalización, medicamentos, tratamientos, insumos, vacunas, medidas sanitarias, la salud de una persona en reclusión—, o la sentencia estudia el derecho a la salud como parte de lo que resuelve. Basta un acto de salud aunque haya otros actos ajenos."},
+   {"id": "marginal", "definicion": "Ningún acto reclamado pide algo de salud, pero la salud tiene contenido real en el asunto: una enfermedad o condición de salud que funda una pensión, una incapacidad o un trámite; la salud invocada como argumento accesorio; o la salud afectada solo como consecuencia indirecta del acto, por ejemplo la omisión de reconocer un parentesco que deja a alguien sin servicio médico."},
+   {"id": "ninguna", "definicion": "La salud no tiene contenido en el asunto. Si aparece la palabra, el nombre de una institución de salud o de seguridad social, o la materia de seguridad social, es solo como rótulo o como autoridad, sin que se discuta la salud de nadie."}
+  ],
+  "incluir": ["central"]
+ },
+ "categorias": [
+  {"id": "atencion_medica", "tipo": "inclusion", "nombre": "atención médica", "definicion": "Se reclama la negativa, omisión, retraso o deficiencia de atención médica: consulta, diagnóstico, hospitalización, cirugía, diálisis, rehabilitación, o traslado o referencia a otra unidad. No es: el pago de una pensión o de una incapacidad, ni la responsabilidad por un daño médico ya ocurrido."},
+  {"id": "medicamentos_tratamiento", "tipo": "inclusion", "nombre": "medicamentos, tratamientos o insumos médicos", "definicion": "Se reclama la falta, negativa, desabasto o retraso en el suministro de medicamentos, tratamientos, insumos, estudios o dispositivos médicos, con receta pública o privada, dentro o fuera del cuadro básico. No es: el registro o la regulación sanitaria de un medicamento promovidos por quien lo fabrica o lo vende."},
+  {"id": "salud_publica", "tipo": "inclusion", "nombre": "prevención y salud pública", "definicion": "Se reclaman medidas de prevención o protección de la salud: vacunación, pruebas, medidas contra contagios, protocolos sanitarios, personal médico suficiente. No es: impugnar una medida sanitaria por su efecto económico, como el cierre de un comercio o la prohibición de vender un producto."},
+  {"id": "salud_reclusion", "tipo": "inclusion", "nombre": "salud de personas privadas de la libertad", "definicion": "Se reclama la atención médica, los medicamentos o las condiciones de salud de una persona en reclusión. No es: un traslado, las visitas o un beneficio penitenciario sin reclamo de salud."},
+  {"id": "cannabis", "tipo": "inclusion", "nombre": "cannabis", "definicion": "Se reclama la autorización para sembrar, cultivar, poseer, transportar o consumir cannabis, con fin lúdico, personal o medicinal. No es: un proceso penal por delitos contra la salud."},
+  {"id": "creditos_fiscales_cuotas", "tipo": "exclusion", "nombre": "créditos fiscales o cuotas de seguridad social", "definicion": "Se impugna un crédito fiscal, una liquidación, un embargo o el cobro de cuotas obrero-patronales, capitales constitutivos o aportaciones al IMSS, al ISSSTE o al INFONAVIT. No es: la negativa de atención médica a una persona porque su patrón no pagó las cuotas."},
+  {"id": "multas_construccion", "tipo": "exclusion", "nombre": "multas o permisos de construcción", "definicion": "Se impugna una multa ajena a la salud, un permiso o licencia de construcción, una orden de demolición o un uso de suelo, aunque la obra sea un hospital. No es: una clausura, multa o sanción sanitaria por riesgo a la salud."},
+  {"id": "laboral_pensiones", "tipo": "exclusion", "nombre": "asuntos laborales del seguro social, pensiones, retiro y otros derechos que no son salud", "definicion": "Se reclama una pensión (jubilación, vejez, cesantía, viudez, orfandad, invalidez como pago), su cálculo, su compatibilidad o su pago; fondos para el retiro (AFORE, SAR); vivienda (INFONAVIT, FOVISSSTE); una incapacidad como pago; o un conflicto laboral con una institución de seguridad social o de salud —cese, reinstalación, salarios, plazas—, incluido el de su personal médico. No es: la atención médica o los medicamentos que la institución debe dar a sus derechohabientes."},
+  {"id": "licitaciones_contratos", "tipo": "exclusion", "nombre": "licitaciones y contratos públicos", "definicion": "Se impugna una licitación, adjudicación, contrato o pago a proveedores, aunque lo contratado sean medicamentos, equipo o servicios de salud. No es: el desabasto que sufre un paciente."},
+  {"id": "peticion_informacion", "tipo": "exclusion", "nombre": "petición o información sin pretensión de salud", "definicion": "Se reclama solo la falta de respuesta a un escrito, la entrega de copias o el acceso a información, sin que se pida un bien o servicio de salud. No es: pedir el expediente clínico o una receta para continuar un tratamiento."}
+ ],
+ "borde": {
+  "pregunta": "¿Hay un punto que impida decidir con seguridad si el asunto trata del derecho a la salud? ¿Cuál?",
+  "opciones": [
+   {"id": "ninguno", "definicion": "La decisión es clara; no hay un borde indeciso."},
+   {"id": "seguridad_social_vs_salud", "definicion": "Una pensión por invalidez, una incapacidad, un dictamen médico o la afiliación de un beneficiario, donde no se distingue si lo reclamado es la atención a la salud o un pago o trámite."},
+   {"id": "negligencia_medica", "definicion": "Se reclama la responsabilidad por un daño médico ya ocurrido, una indemnización o una queja por mala práctica."},
+   {"id": "regulacion_sanitaria", "definicion": "Regulación sanitaria: registros, permisos o clausuras de COFEPRIS u otra autoridad sanitaria, o regulación de profesiones médicas, promovida casi siempre por una empresa o un profesional."},
+   {"id": "covid_efecto_economico", "definicion": "Una medida sanitaria, como las de COVID-19, impugnada por su efecto económico: cierres, horarios, prohibición de venta."},
+   {"id": "determinantes_salud", "definicion": "Agua, saneamiento, medio ambiente, alimentación o vivienda, con un alegato de salud."},
+   {"id": "discapacidad_no_medica", "definicion": "Prestaciones o ajustes por discapacidad que no son atención médica: accesibilidad, educación, apoyos."},
+   {"id": "reclusion_no_medica", "definicion": "Una persona en reclusión reclama algo que no es claramente de salud: aislamiento, traslado, visitas."},
+   {"id": "salud_mental", "definicion": "Salud mental ligada a internamiento involuntario, capacidad jurídica o interdicción."},
+   {"id": "migracion", "definicion": "Asilo, refugio o deportación con un alegato de salud."},
+   {"id": "informacion_insuficiente", "definicion": "Lo recibido no alcanza para decidir; por ejemplo, metadatos que solo dicen que se sobresee, se desecha o se ampara."},
+   {"id": "otro", "definicion": "Hay otro punto indeciso que no está en esta lista."}
+  ]
+ }
+}
